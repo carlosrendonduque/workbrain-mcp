@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:info": "tsx scripts/db-info.ts"
+    "db:info": "tsx scripts/db-info.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "voyage:test": "tsx scripts/voyage-test.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -18,7 +21,8 @@
     "drizzle-orm": "^0.45.2",
     "next": "^15.4.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
