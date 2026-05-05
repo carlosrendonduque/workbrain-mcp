@@ -1,3 +1,3 @@
 export const PACKAGE_NAME = "@workbrain/shared";
 
-export * as schema from "./schema.js";
+export * as schema from "./schema";
