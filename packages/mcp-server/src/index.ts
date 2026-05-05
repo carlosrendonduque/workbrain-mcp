@@ -1,23 +1,26 @@
 #!/usr/bin/env node
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { WorkBrainClient } from "./client.js";
 import { loadConfig } from "./config.js";
+import * as currentProject from "./tools/current-project.js";
+import * as ingestPaste from "./tools/ingest-paste.js";
+import * as searchTool from "./tools/search.js";
+import * as setActiveProject from "./tools/set-active-project.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  // Construct the client up front so a misconfiguration fails immediately.
-  // Tools that use it are wired in Task 1.12.
-  void new WorkBrainClient(config);
+  const client = new WorkBrainClient(config);
 
-  const server = new Server(
+  const server = new McpServer(
     { name: "workbrain", version: "0.1.0" },
     { capabilities: { tools: {} } },
   );
 
-  // Tool registry is empty in Task 1.11 — Task 1.12 fills it.
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
+  ingestPaste.register(server, client);
+  searchTool.register(server, client);
+  setActiveProject.register(server, client);
+  currentProject.register(server, client);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
