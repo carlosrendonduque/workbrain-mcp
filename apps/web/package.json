@@ -13,7 +13,9 @@
     "db:info": "tsx scripts/db-info.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "voyage:test": "tsx scripts/voyage-test.ts"
+    "voyage:test": "tsx scripts/voyage-test.ts",
+    "corpus:init": "tsx scripts/corpus-init.ts",
+    "corpus:demo": "tsx scripts/corpus-demo.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
