@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { ClassifierError, type ClassifierUsage, classify } from "./classifier";
@@ -37,6 +37,13 @@ export const IngestPasteInputSchema = z.object({
 
 export type IngestPasteInput = z.infer<typeof IngestPasteInputSchema>;
 
+export interface AutoLink {
+  toDocumentId: string;
+  externalId: string;
+  linkType: string;
+  source: "classifier" | "input";
+}
+
 export interface IngestPasteResult {
   documentId: string;
   path: string;
@@ -47,6 +54,8 @@ export interface IngestPasteResult {
   inferredExternalId?: string;
   inferredDate?: string;
   classifierCostUsd?: string;
+  autoLinks: AutoLink[];
+  unmatchedReferences: string[];
 }
 
 export class IngestError extends Error {
@@ -114,6 +123,92 @@ interface ResolvedProject {
   clientId: string;
   clientSlug: string;
   persist: boolean;
+}
+
+interface ReferenceCandidate {
+  externalId: string;
+  source: "classifier" | "input";
+}
+
+interface AutoLinkOutcome {
+  links: AutoLink[];
+  unmatched: string[];
+}
+
+// Auto-link the freshly inserted document to other documents in the SAME
+// project whose external_id matches anything the classifier extracted or the
+// caller passed via relatedTickets. Cross-project links are never created
+// automatically (governance: each client/project is an architecturally
+// guaranteed silo). Self-links are skipped.
+async function autoLinkReferences(args: {
+  fromDocumentId: string;
+  projectId: string;
+  candidates: ReferenceCandidate[];
+}): Promise<AutoLinkOutcome> {
+  if (args.candidates.length === 0) {
+    return { links: [], unmatched: [] };
+  }
+
+  // Dedupe by externalId; caller-supplied references take precedence over the
+  // classifier's extraction when both reference the same ID.
+  const sourceByExternalId = new Map<string, "classifier" | "input">();
+  for (const c of args.candidates) {
+    if (c.source === "classifier" && sourceByExternalId.has(c.externalId)) continue;
+    sourceByExternalId.set(c.externalId, c.source);
+  }
+  const externalIds = Array.from(sourceByExternalId.keys());
+
+  const matches = await db
+    .select({
+      id: schema.documents.id,
+      externalId: schema.documents.externalId,
+    })
+    .from(schema.documents)
+    .where(
+      and(
+        eq(schema.documents.projectId, args.projectId),
+        inArray(schema.documents.externalId, externalIds),
+      ),
+    );
+
+  const idByExternalId = new Map<string, string>();
+  for (const m of matches) {
+    if (m.externalId) idByExternalId.set(m.externalId, m.id);
+  }
+
+  const links: AutoLink[] = [];
+  const linkRows: {
+    fromDocumentId: string;
+    toDocumentId: string;
+    linkType: string;
+    note: string;
+  }[] = [];
+  const unmatched: string[] = [];
+
+  for (const externalId of externalIds) {
+    const toId = idByExternalId.get(externalId);
+    if (!toId) {
+      unmatched.push(externalId);
+      continue;
+    }
+    if (toId === args.fromDocumentId) {
+      // Self-reference (re-ingest of the same document); skip silently.
+      continue;
+    }
+    const source = sourceByExternalId.get(externalId) ?? "classifier";
+    linkRows.push({
+      fromDocumentId: args.fromDocumentId,
+      toDocumentId: toId,
+      linkType: "references",
+      note: `auto-linked from ${source}`,
+    });
+    links.push({ toDocumentId: toId, externalId, linkType: "references", source });
+  }
+
+  if (linkRows.length > 0) {
+    await db.insert(schema.documentLinks).values(linkRows);
+  }
+  return { links, unmatched };
 }
 
 async function resolveProject(userId: string, projectSlug: string): Promise<ResolvedProject> {
@@ -190,6 +285,7 @@ export async function ingestPaste(
   let inferredType: DocumentType | undefined;
   let inferredExternalId: string | undefined;
   let inferredDate: string | undefined;
+  let inferredReferences: string[] = [];
 
   try {
     projectInfo = await resolveProject(userId, input.projectSlug);
@@ -202,6 +298,7 @@ export async function ingestPaste(
         inferredType = out.result.type;
         inferredExternalId = out.result.externalId;
         inferredDate = out.result.detectedDate;
+        inferredReferences = out.result.references;
         classifierUsage = out.usage;
         classifierCost = classifierCostUsd(out.usage);
         classifierResponse = JSON.stringify(out.result);
@@ -311,6 +408,25 @@ export async function ingestPaste(
       chunkCount = chunkRows.length;
     }
 
+    // Auto-link to other documents in the same project that match any
+    // external_id the classifier extracted or the caller passed manually.
+    // Self-references (a document linking to itself, e.g. on re-ingest) are
+    // skipped inside autoLinkReferences.
+    const referenceCandidates: ReferenceCandidate[] = [];
+    for (const externalId of inferredReferences) {
+      referenceCandidates.push({ externalId, source: "classifier" });
+    }
+    if (input.relatedTickets) {
+      for (const externalId of input.relatedTickets) {
+        referenceCandidates.push({ externalId, source: "input" });
+      }
+    }
+    const linkOutcome = await autoLinkReferences({
+      fromDocumentId: documentId,
+      projectId: projectInfo.projectId,
+      candidates: referenceCandidates,
+    });
+
     void commitAndPush(
       written.relativePath,
       `feat(ingest): ${finalType} ${finalExternalId ?? slugifyTitle(input.title)}`,
@@ -339,6 +455,8 @@ export async function ingestPaste(
       inferredExternalId,
       inferredDate,
       classifierCostUsd: classifierCost,
+      autoLinks: linkOutcome.links,
+      unmatchedReferences: linkOutcome.unmatched,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
