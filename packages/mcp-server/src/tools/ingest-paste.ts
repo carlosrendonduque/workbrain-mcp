@@ -19,7 +19,12 @@ const DOCUMENT_TYPES = [
 ] as const;
 
 const inputSchema = {
-  type: z.enum(DOCUMENT_TYPES).describe("Document type. Required."),
+  type: z
+    .enum(DOCUMENT_TYPES)
+    .optional()
+    .describe(
+      "Document type. Optional — if omitted, the backend auto-classifies the body via Claude Sonnet 4.6 and infers the type, externalId, and primary date.",
+    ),
   title: z.string().min(1).describe("Document title."),
   content: z.string().min(1).describe("Raw markdown body of the document."),
   externalId: z.string().min(1).optional().describe("External identifier, e.g. TICKET-1234."),
@@ -38,7 +43,7 @@ export function register(server: McpServer, client: WorkBrainClient): void {
     "ingest_paste",
     {
       description:
-        "Ingest a pasted document (ticket, Confluence page, Teams thread, email, transcript, decision, convention, guideline, stakeholder, task, note) into the active project's corpus. The body is chunked, embedded with voyage-3-large, persisted to disk plus database, and pushed to the corpus git repo.",
+        "Ingest a pasted document into the active project's corpus. The body is chunked, embedded with voyage-3-large, persisted to disk plus database, and pushed to the corpus git repo. Type is optional — omit it to let the backend auto-classify (ticket, Confluence page, Teams thread, email, transcript, decision, convention, guideline, stakeholder, task, note) and extract externalId/date from the body. Pass type explicitly when you already know it to skip the classifier call.",
       inputSchema,
     },
     async (args) => {

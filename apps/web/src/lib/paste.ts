@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
+import { ClassifierError, type ClassifierUsage, classify } from "./classifier";
 import { buildDocumentPath, writeDocument } from "./corpus";
 import { db } from "./db";
 import { chunkMarkdown } from "./chunking";
@@ -21,9 +22,11 @@ const DOCUMENT_TYPES = [
   "note",
 ] as const;
 
+type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
 export const IngestPasteInputSchema = z.object({
   projectSlug: z.string().min(1),
-  type: z.enum(DOCUMENT_TYPES),
+  type: z.enum(DOCUMENT_TYPES).optional(),
   title: z.string().min(1),
   content: z.string().min(1),
   externalId: z.string().min(1).optional(),
@@ -39,6 +42,11 @@ export interface IngestPasteResult {
   path: string;
   frontmatter: Record<string, unknown>;
   chunkCount: number;
+  classified: boolean;
+  inferredType?: DocumentType;
+  inferredExternalId?: string;
+  inferredDate?: string;
+  classifierCostUsd?: string;
 }
 
 export class IngestError extends Error {
@@ -53,7 +61,7 @@ export class IngestError extends Error {
   }
 }
 
-const TYPE_FOLDERS: Record<(typeof DOCUMENT_TYPES)[number], string> = {
+const TYPE_FOLDERS: Record<DocumentType, string> = {
   ticket: "tickets",
   confluence: "confluence",
   teams_thread: "teams",
@@ -66,6 +74,24 @@ const TYPE_FOLDERS: Record<(typeof DOCUMENT_TYPES)[number], string> = {
   task: "tasks",
   note: "notes",
 };
+
+// Sonnet 4.6 list prices (USD per 1M tokens). Cache reads bill at 10% of input,
+// cache writes at 1.25x. Used to populate invocations.cost_usd for the audit row.
+const SONNET_PRICING = {
+  input: 3 / 1_000_000,
+  output: 15 / 1_000_000,
+  cacheRead: 0.3 / 1_000_000,
+  cacheWrite: 3.75 / 1_000_000,
+};
+
+function classifierCostUsd(usage: ClassifierUsage): string {
+  const cost =
+    usage.inputTokens * SONNET_PRICING.input +
+    usage.outputTokens * SONNET_PRICING.output +
+    usage.cacheReadInputTokens * SONNET_PRICING.cacheRead +
+    usage.cacheCreationInputTokens * SONNET_PRICING.cacheWrite;
+  return cost.toFixed(6);
+}
 
 function slugifyTitle(title: string): string {
   const slug = title
@@ -115,7 +141,7 @@ async function resolveProject(userId: string, projectSlug: string): Promise<Reso
   return row;
 }
 
-async function recordAudit(args: {
+interface AuditArgs {
   userId: string;
   projectId: string;
   status: "success" | "error";
@@ -123,7 +149,12 @@ async function recordAudit(args: {
   retrievedChunks: unknown;
   errorDetail?: string;
   latencyMs: number;
-}): Promise<void> {
+  classifierUsage?: ClassifierUsage;
+  classifierCost?: string;
+  classifierResponse?: string;
+}
+
+async function recordAudit(args: AuditArgs): Promise<void> {
   try {
     await db.insert(schema.invocations).values({
       userId: args.userId,
@@ -134,6 +165,12 @@ async function recordAudit(args: {
       status: args.status,
       errorDetail: args.errorDetail,
       latencyMs: args.latencyMs,
+      provider: args.classifierUsage ? "anthropic" : "none",
+      model: args.classifierUsage ? "claude-sonnet-4-6" : "none",
+      promptTokens: args.classifierUsage?.inputTokens ?? null,
+      completionTokens: args.classifierUsage?.outputTokens ?? null,
+      costUsd: args.classifierCost ?? null,
+      responseText: args.classifierResponse ?? null,
     });
   } catch (err) {
     console.error("audit insert failed:", err);
@@ -147,12 +184,47 @@ export async function ingestPaste(
   const start = Date.now();
 
   let projectInfo: ResolvedProject | null = null;
+  let classifierUsage: ClassifierUsage | undefined;
+  let classifierCost: string | undefined;
+  let classifierResponse: string | undefined;
+  let inferredType: DocumentType | undefined;
+  let inferredExternalId: string | undefined;
+  let inferredDate: string | undefined;
+
   try {
     projectInfo = await resolveProject(userId, input.projectSlug);
 
-    const fileBase = input.externalId ?? slugifyTitle(input.title);
+    // Auto-classify only when caller did not pass type. The classifier is a
+    // fallback, not a validator — explicit type from the caller is always honored.
+    if (!input.type) {
+      try {
+        const out = await classify(input.content);
+        inferredType = out.result.type;
+        inferredExternalId = out.result.externalId;
+        inferredDate = out.result.detectedDate;
+        classifierUsage = out.usage;
+        classifierCost = classifierCostUsd(out.usage);
+        classifierResponse = JSON.stringify(out.result);
+      } catch (err) {
+        if (err instanceof ClassifierError) {
+          throw new IngestError(
+            "classification_failed",
+            `Auto-classification failed (${err.code}): ${err.message}. Pass an explicit type to skip the classifier.`,
+            err.status,
+          );
+        }
+        throw err;
+      }
+    }
+
+    const finalType: DocumentType = input.type ?? inferredType ?? "note";
+    const finalExternalId = input.externalId ?? inferredExternalId;
+    const created = inferredDate ?? todayIsoDate();
+    const updated = todayIsoDate();
+
+    const fileBase = finalExternalId ?? slugifyTitle(input.title);
     const fileName = `${fileBase}.md`;
-    const typeFolder = TYPE_FOLDERS[input.type];
+    const typeFolder = TYPE_FOLDERS[finalType];
     const relativePath = buildDocumentPath({
       clientSlug: projectInfo.clientSlug,
       projectSlug: projectInfo.projectSlug,
@@ -160,16 +232,15 @@ export async function ingestPaste(
       fileName,
     });
 
-    const today = todayIsoDate();
     const frontmatter: Record<string, unknown> = {
-      type: input.type,
+      type: finalType,
       project: projectInfo.projectSlug,
       client: projectInfo.clientSlug,
-      ...(input.externalId ? { external_id: input.externalId } : {}),
+      ...(finalExternalId ? { external_id: finalExternalId } : {}),
       title: input.title,
       ...(input.status ? { status: input.status } : {}),
-      created: today,
-      updated: today,
+      created,
+      updated,
       ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
       ...(input.relatedTickets && input.relatedTickets.length > 0
         ? { related_tickets: input.relatedTickets }
@@ -187,8 +258,8 @@ export async function ingestPaste(
       .insert(schema.documents)
       .values({
         projectId: projectInfo.projectId,
-        type: input.type,
-        externalId: input.externalId ?? null,
+        type: finalType,
+        externalId: finalExternalId ?? null,
         path: relativePath,
         title: input.title,
         content: input.content,
@@ -218,6 +289,7 @@ export async function ingestPaste(
         );
       }
 
+      const project = projectInfo;
       const chunkRows = chunks.map((chunk, i) => {
         const embedding = embeddings[i];
         if (!embedding) {
@@ -225,9 +297,9 @@ export async function ingestPaste(
         }
         return {
           documentId,
-          projectId: projectInfo!.projectId,
-          clientId: projectInfo!.clientId,
-          type: input.type,
+          projectId: project.projectId,
+          clientId: project.clientId,
+          type: finalType,
           chunkIndex: chunk.index,
           text: chunk.text,
           tokenCount: chunk.tokenCount,
@@ -241,7 +313,7 @@ export async function ingestPaste(
 
     void commitAndPush(
       written.relativePath,
-      `feat(ingest): ${input.type} ${input.externalId ?? slugifyTitle(input.title)}`,
+      `feat(ingest): ${finalType} ${finalExternalId ?? slugifyTitle(input.title)}`,
       repo,
     );
 
@@ -249,9 +321,12 @@ export async function ingestPaste(
       userId,
       projectId: projectInfo.projectId,
       status: "success",
-      userPrompt: `ingest_paste type=${input.type} title="${input.title}"`,
+      userPrompt: `ingest_paste type=${finalType} title="${input.title}" classified=${classifierUsage !== undefined}`,
       retrievedChunks: [],
       latencyMs: Date.now() - start,
+      classifierUsage,
+      classifierCost,
+      classifierResponse,
     });
 
     return {
@@ -259,6 +334,11 @@ export async function ingestPaste(
       path: relativePath,
       frontmatter,
       chunkCount,
+      classified: classifierUsage !== undefined,
+      inferredType,
+      inferredExternalId,
+      inferredDate,
+      classifierCostUsd: classifierCost,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -267,10 +347,13 @@ export async function ingestPaste(
         userId,
         projectId: projectInfo.projectId,
         status: "error",
-        userPrompt: `ingest_paste type=${input.type} title="${input.title}"`,
+        userPrompt: `ingest_paste type=${input.type ?? "(auto)"} title="${input.title}"`,
         retrievedChunks: [],
         errorDetail: message,
         latencyMs: Date.now() - start,
+        classifierUsage,
+        classifierCost,
+        classifierResponse,
       });
     }
     throw err;
