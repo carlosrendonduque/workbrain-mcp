@@ -8,13 +8,13 @@ if (!saltHex) {
 
 const BEARER_PATTERN = /^Bearer\s+(wbk_[a-f0-9]{64})$/;
 
-function hexToArrayBuffer(hex: string): ArrayBuffer {
-  const buffer = new ArrayBuffer(hex.length / 2);
-  const view = new Uint8Array(buffer);
-  for (let i = 0; i < view.length; i += 1) {
-    view[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
+  const buf = new ArrayBuffer(hex.length / 2);
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
-  return buffer;
+  return bytes;
 }
 
 function bytesToHex(buffer: ArrayBuffer): string {
@@ -27,22 +27,20 @@ function bytesToHex(buffer: ArrayBuffer): string {
   return out;
 }
 
-const SALT_BUFFER = hexToArrayBuffer(saltHex);
+const SALT_BYTES = hexToBytes(saltHex);
 
 export async function hashApiKey(rawKey: string): Promise<string> {
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    SALT_BUFFER,
+    SALT_BYTES,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const messageBuffer = new ArrayBuffer(rawKey.length);
-  const messageView = new Uint8Array(messageBuffer);
-  for (let i = 0; i < rawKey.length; i += 1) {
-    messageView[i] = rawKey.charCodeAt(i);
-  }
-  const signature = await crypto.subtle.sign("HMAC", keyMaterial, messageBuffer);
+  const encoded = new TextEncoder().encode(rawKey);
+  const message = new Uint8Array(new ArrayBuffer(encoded.length));
+  message.set(encoded);
+  const signature = await crypto.subtle.sign("HMAC", keyMaterial, message);
   return bytesToHex(signature);
 }
 
