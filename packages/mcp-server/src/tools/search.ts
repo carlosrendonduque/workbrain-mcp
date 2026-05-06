@@ -6,9 +6,34 @@ import { getActiveProject } from "../state.js";
 
 const inputSchema = {
   query: z.string().min(1).describe("Natural-language query."),
-  types: z.array(z.string()).optional().describe("Optional filter on document type."),
+  types: z
+    .array(z.string())
+    .optional()
+    .describe("Optional filter on document type (e.g. ['ticket'] to search only tickets)."),
+  externalId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional exact-match filter on a document's external_id (e.g. 'TICKET-1234'). Useful to scope search to chunks of one specific document.",
+    ),
+  dateRange: z
+    .object({
+      from: z.string().optional().describe("ISO date YYYY-MM-DD (inclusive)."),
+      to: z.string().optional().describe("ISO date YYYY-MM-DD (inclusive end-of-day)."),
+    })
+    .optional()
+    .describe(
+      "Optional ingestion date range filter (against documents.created_at). At least one of from / to must be set.",
+    ),
   topK: z.number().int().min(1).max(50).optional().describe("Default 8."),
   minSimilarity: z.number().min(0).max(1).optional().describe("Default 0.3."),
+  useRerank: z
+    .boolean()
+    .optional()
+    .describe(
+      "Default true — runs Voyage rerank-2 over the top 50 cosine candidates and returns the top-K reordered. Pass false for cheaper / faster cosine-only retrieval.",
+    ),
   projectSlug: z
     .string()
     .min(1)
