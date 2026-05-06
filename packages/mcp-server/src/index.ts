@@ -5,6 +5,7 @@ import { WorkBrainClient } from "./client.js";
 import { loadConfig } from "./config.js";
 import * as currentProject from "./tools/current-project.js";
 import * as ingestPaste from "./tools/ingest-paste.js";
+import * as linkDocuments from "./tools/link-documents.js";
 import * as recordDecision from "./tools/record-decision.js";
 import * as searchTool from "./tools/search.js";
 import * as setActiveProject from "./tools/set-active-project.js";
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
   setActiveProject.register(server, client);
   currentProject.register(server, client);
   recordDecision.register(server, client);
+  linkDocuments.register(server, client);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
