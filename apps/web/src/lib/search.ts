@@ -1,13 +1,26 @@
-import { and, cosineDistance, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { db } from "./db";
 import { type RerankUsage, embed, rerank } from "./embeddings";
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const isoDate = z.string().regex(ISO_DATE_PATTERN, "Date must be YYYY-MM-DD");
+
 export const SearchInputSchema = z.object({
   query: z.string().min(1),
   projectSlug: z.string().min(1),
   types: z.array(z.string()).optional(),
+  externalId: z.string().min(1).optional(),
+  dateRange: z
+    .object({
+      from: isoDate.optional(),
+      to: isoDate.optional(),
+    })
+    .refine((r) => r.from !== undefined || r.to !== undefined, {
+      message: "dateRange must have at least one of from / to",
+    })
+    .optional(),
   topK: z.number().int().min(1).max(50).optional(),
   minSimilarity: z.number().min(0).max(1).optional(),
   useRerank: z.boolean().optional(),
@@ -146,6 +159,18 @@ export async function search(userId: string, input: SearchInput): Promise<Search
     ];
     if (input.types && input.types.length > 0) {
       conditions.push(inArray(schema.chunks.type, input.types));
+    }
+    if (input.externalId) {
+      conditions.push(eq(schema.documents.externalId, input.externalId));
+    }
+    if (input.dateRange?.from) {
+      conditions.push(gte(schema.documents.createdAt, new Date(input.dateRange.from)));
+    }
+    if (input.dateRange?.to) {
+      // Treat the "to" bound as inclusive end-of-day so 2026-05-06 covers
+      // documents ingested at any time on May 6.
+      const endOfDay = new Date(`${input.dateRange.to}T23:59:59.999Z`);
+      conditions.push(lte(schema.documents.createdAt, endOfDay));
     }
 
     const rows = await db
