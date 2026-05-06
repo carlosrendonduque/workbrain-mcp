@@ -14,6 +14,7 @@
     "db:seed:dev": "tsx scripts/seed-dev.ts",
     "db:seed:projects": "tsx scripts/seed-projects.ts",
     "db:meta:sync": "tsx scripts/meta-sync.ts",
+    "db:stakeholders:sync": "tsx scripts/stakeholders-sync.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "voyage:test": "tsx scripts/voyage-test.ts",
@@ -29,6 +30,7 @@
     "next": "^15.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "yaml": "^2.8.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
