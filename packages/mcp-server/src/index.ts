@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { WorkBrainClient } from "./client.js";
 import { loadConfig } from "./config.js";
+import * as composeContext from "./tools/compose-context.js";
 import * as currentProject from "./tools/current-project.js";
 import * as ingestPaste from "./tools/ingest-paste.js";
 import * as linkDocuments from "./tools/link-documents.js";
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
   currentProject.register(server, client);
   recordDecision.register(server, client);
   linkDocuments.register(server, client);
+  composeContext.register(server, client);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
