@@ -2,6 +2,8 @@ import { z } from "zod";
 
 const ENDPOINT = "https://api.voyageai.com/v1/embeddings";
 const MODEL = "voyage-3-large";
+const RERANK_ENDPOINT = "https://api.voyageai.com/v1/rerank";
+const RERANK_MODEL = "rerank-2";
 const MAX_BATCH = 128;
 const MAX_RETRIES = 3;
 const EXPECTED_DIMENSIONS = 1024;
@@ -112,4 +114,101 @@ export async function embed(texts: string[], inputType: VoyageInputType): Promis
   return out;
 }
 
-export const __internals = { EXPECTED_DIMENSIONS, MODEL, ENDPOINT };
+// -----------------------------
+// Rerank (voyage rerank-2)
+// -----------------------------
+
+const RerankResponseSchema = z.object({
+  data: z.array(
+    z.object({
+      index: z.number().int(),
+      relevance_score: z.number(),
+    }),
+  ),
+  model: z.string().optional(),
+  usage: z
+    .object({
+      total_tokens: z.number().int(),
+    })
+    .optional(),
+});
+
+export interface RerankHit {
+  index: number;
+  relevanceScore: number;
+}
+
+export interface RerankUsage {
+  totalTokens: number;
+}
+
+export interface RerankOutput {
+  hits: RerankHit[];
+  usage: RerankUsage;
+}
+
+async function rerankCall(
+  query: string,
+  documents: string[],
+  topK: number,
+  apiKey: string,
+): Promise<RerankOutput> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    const response = await fetch(RERANK_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        documents,
+        model: RERANK_MODEL,
+        top_k: topK,
+      }),
+    });
+
+    if (response.ok) {
+      const json = await response.json();
+      const parsed = RerankResponseSchema.parse(json);
+      const hits: RerankHit[] = parsed.data.map((d) => ({
+        index: d.index,
+        relevanceScore: d.relevance_score,
+      }));
+      return { hits, usage: { totalTokens: parsed.usage?.total_tokens ?? 0 } };
+    }
+
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      const backoffMs = 2 ** attempt * 1000;
+      await sleep(backoffMs);
+      continue;
+    }
+
+    const body = await readBody(response);
+    throw new VoyageError(
+      `Voyage rerank ${response.status}: ${response.statusText}`,
+      response.status,
+      body,
+    );
+  }
+
+  throw new VoyageError("Voyage rerank exceeded retry budget", 0, null);
+}
+
+export async function rerank(
+  query: string,
+  documents: string[],
+  topK: number,
+): Promise<RerankOutput> {
+  if (documents.length === 0) {
+    return { hits: [], usage: { totalTokens: 0 } };
+  }
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) {
+    throw new Error("VOYAGE_API_KEY is not set");
+  }
+  const cappedTopK = Math.min(topK, documents.length);
+  return await rerankCall(query, documents, cappedTopK, apiKey);
+}
+
+export const __internals = { EXPECTED_DIMENSIONS, MODEL, ENDPOINT, RERANK_MODEL, RERANK_ENDPOINT };
