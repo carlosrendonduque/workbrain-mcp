@@ -32,6 +32,12 @@ Thumbs.db
 !.vscode/settings.json
 .idea/
 
+# MCP configs hold per-developer API keys; commit only the .example templates
+.mcp.json
+!.mcp.json.example
+.cursor/mcp.json
+!.cursor/mcp.json.example
+
 # Coverage
 coverage/
 

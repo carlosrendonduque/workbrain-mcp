@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "workbrain": {
+      "command": "<absolute path to node, e.g. /home/<user>/.nvm/versions/node/v22.22.2/bin/node>",
+      "args": [
+        "<absolute path to dist/index.js, e.g. /home/<user>/repos/workbrain/workbrain/packages/mcp-server/dist/index.js>"
+      ],
+      "env": {
+        "WORKBRAIN_API_URL": "http://localhost:3000",
+        "WORKBRAIN_API_KEY": "wbk_<paste your key from generate-api-key>"
+      }
+    }
+  }
+}
