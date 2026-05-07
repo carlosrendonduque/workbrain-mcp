@@ -76,6 +76,7 @@ producto se usa desde el browser.
 | 4.6 | Visualizador del grafo de `document_links` | ~5h (lista) o ~10h (react-flow) |
 | 4.8 | Toggle persist/ephemeral por proyecto | ~1h |
 | 4.9 | CSV export de invocations | ~1h |
+| 4.15 | Image/attachment support en documents | ~3-4h. Hoy `ingest_paste` toma solo markdown. Workaround: pegar screenshot en Claude Code chat → pedir transcripción a markdown → ingestar texto. Falta: blob storage (Vercel Blob o S3), columna `documents.attachments`, render en doc detail page. Útil para diagramas de arquitectura, mockups, errores de consola. |
 
 ## Phase 5 — Production deployment & resilience
 
