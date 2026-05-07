@@ -112,12 +112,20 @@ export function SignupForm({ initialToken }: { initialToken?: string }) {
           </div>
         </div>
 
-        <Link
-          href="/login"
-          className="inline-block text-xs text-emerald-200 underline-offset-2 hover:underline"
-        >
-          Sign in to the dashboard with your new key →
-        </Link>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          <Link
+            href="/login"
+            className="text-emerald-200 underline-offset-2 hover:underline"
+          >
+            Sign in to the dashboard →
+          </Link>
+          <Link
+            href="/setup"
+            className="text-emerald-200 underline-offset-2 hover:underline"
+          >
+            Full setup guide →
+          </Link>
+        </div>
       </div>
     );
   }
