@@ -142,13 +142,6 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
               edit
             </Link>
           </div>
-          <a
-            href={`${basePath}/claude-md`}
-            className="text-[11px] text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
-            title="Download a CLAUDE.md to drop in your client's repo so the IDE agent knows how to use this project"
-          >
-            ↓ Download CLAUDE.md
-          </a>
         </div>
       </header>
 

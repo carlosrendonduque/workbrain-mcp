@@ -1,6 +1,125 @@
 import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 
+export interface ProjectOverview {
+  projectSlug: string;
+  projectName: string;
+  clientSlug: string;
+  clientName: string;
+  persist: boolean;
+  canon: {
+    conventions: boolean;
+    guidelines: boolean;
+    architecture: boolean;
+  };
+  documentCount: number;
+  documentsByType: Record<string, number>;
+  stakeholderCount: number;
+  pendingDraftsCount: number;
+  recentDocuments: Array<{
+    title: string;
+    type: string;
+    externalId: string | null;
+    createdAt: Date | string;
+  }>;
+  lastInvocationAt: Date | string | null;
+}
+
+export async function getProjectOverview(
+  userId: string,
+  projectSlug: string,
+): Promise<ProjectOverview | null> {
+  const projectRows = await db
+    .select({
+      projectId: schema.projects.id,
+      projectSlug: schema.projects.slug,
+      projectName: schema.projects.name,
+      persist: schema.projects.persist,
+      conventions: schema.projects.conventions,
+      guidelines: schema.projects.guidelines,
+      architecture: schema.projects.architecture,
+      clientSlug: schema.clients.slug,
+      clientName: schema.clients.name,
+    })
+    .from(schema.projects)
+    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
+    .where(and(eq(schema.clients.userId, userId), eq(schema.projects.slug, projectSlug)))
+    .limit(1);
+
+  const project = projectRows[0];
+  if (!project) return null;
+
+  const [docCount] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.documents)
+    .where(eq(schema.documents.projectId, project.projectId));
+
+  const docsByType = await db
+    .select({
+      type: schema.documents.type,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(schema.documents)
+    .where(eq(schema.documents.projectId, project.projectId))
+    .groupBy(schema.documents.type);
+
+  const [stakeholderCount] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.stakeholders)
+    .where(eq(schema.stakeholders.projectId, project.projectId));
+
+  const [draftCount] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.draftDocuments)
+    .where(
+      and(
+        eq(schema.draftDocuments.projectId, project.projectId),
+        eq(schema.draftDocuments.status, "pending"),
+      ),
+    );
+
+  const recentDocs = await db
+    .select({
+      title: schema.documents.title,
+      type: schema.documents.type,
+      externalId: schema.documents.externalId,
+      createdAt: schema.documents.createdAt,
+    })
+    .from(schema.documents)
+    .where(eq(schema.documents.projectId, project.projectId))
+    .orderBy(desc(schema.documents.createdAt))
+    .limit(5);
+
+  const [lastInv] = await db
+    .select({
+      lastAt: sql<Date | null>`max(${schema.invocations.createdAt})`,
+    })
+    .from(schema.invocations)
+    .where(eq(schema.invocations.projectId, project.projectId));
+
+  const documentsByType: Record<string, number> = {};
+  for (const r of docsByType) documentsByType[r.type] = r.n;
+
+  return {
+    projectSlug: project.projectSlug,
+    projectName: project.projectName,
+    clientSlug: project.clientSlug,
+    clientName: project.clientName,
+    persist: project.persist,
+    canon: {
+      conventions: Boolean(project.conventions && project.conventions.trim().length > 0),
+      guidelines: Boolean(project.guidelines && project.guidelines.trim().length > 0),
+      architecture: Boolean(project.architecture && project.architecture.trim().length > 0),
+    },
+    documentCount: docCount?.n ?? 0,
+    documentsByType,
+    stakeholderCount: stakeholderCount?.n ?? 0,
+    pendingDraftsCount: draftCount?.n ?? 0,
+    recentDocuments: recentDocs,
+    lastInvocationAt: lastInv?.lastAt ?? null,
+  };
+}
+
 export class ProjectError extends Error {
   readonly code: string;
   readonly status: number;
