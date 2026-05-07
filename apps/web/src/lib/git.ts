@@ -75,11 +75,13 @@ export async function commitAndPush(
   }
 }
 
-export async function loadRepoConfigFromEnv(): Promise<RepoConfig> {
+export async function loadRepoConfigFromEnv(): Promise<RepoConfig | null> {
   const rootPath = process.env.WORKBRAIN_CORPUS_PATH;
   const remoteUrl = process.env.WORKBRAIN_CORPUS_REMOTE;
   const branch = process.env.WORKBRAIN_CORPUS_BRANCH ?? "main";
-  if (!rootPath) throw new Error("WORKBRAIN_CORPUS_PATH is not set");
-  if (!remoteUrl) throw new Error("WORKBRAIN_CORPUS_REMOTE is not set");
+  // Corpus disk-mirror is optional. In serverless deploys (Vercel) the
+  // filesystem is ephemeral, so we skip the mirror entirely when these env
+  // vars are missing. The DB remains the source of truth.
+  if (!rootPath || !remoteUrl) return null;
   return { rootPath, remoteUrl, branch };
 }

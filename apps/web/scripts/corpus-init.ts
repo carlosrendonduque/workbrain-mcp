@@ -5,6 +5,11 @@ config({ path: ".env.local" });
 
 async function main(): Promise<void> {
   const repo = await loadRepoConfigFromEnv();
+  if (!repo) {
+    throw new Error(
+      "Corpus env vars missing. Set WORKBRAIN_CORPUS_PATH and WORKBRAIN_CORPUS_REMOTE in .env.local.",
+    );
+  }
   console.log(`initializing corpus at ${repo.rootPath}`);
   console.log(`remote: ${repo.remoteUrl}`);
   console.log(`branch: ${repo.branch}`);
