@@ -12,16 +12,25 @@ export default async function ProjectsIndexPage() {
 
   return (
     <div className="px-8 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-zinc-100">Corpus</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Pick a project to browse its documents. Each project is fully isolated.
-        </p>
+      <header className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-100">Corpus</h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            Pick a project to browse its documents. Each project is fully isolated.
+          </p>
+        </div>
+        <Link
+          href="/projects/new"
+          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500"
+        >
+          + New project
+        </Link>
       </header>
 
       {projects.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-6 text-sm text-zinc-400">
-          No projects yet.
+          No projects yet. Click <span className="text-zinc-200">+ New project</span> above
+          to create your first one.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
