@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { db, schema } from "./db";
 
 export class CurationError extends Error {
@@ -58,4 +59,74 @@ export async function unarchiveDocument(userId: string, documentId: string): Pro
     .update(schema.documents)
     .set({ status: null, updatedAt: sql`now()` })
     .where(eq(schema.documents.id, documentId));
+}
+
+// Tool-friendly variant: lookup by externalId within a project, or by uuid.
+// Used by the MCP archive_document tool so callers don't need internal ids.
+export const ArchiveDocumentInputSchema = z
+  .object({
+    projectSlug: z.string().min(1),
+    externalId: z.string().min(1).optional(),
+    documentId: z.string().uuid().optional(),
+  })
+  .refine((d) => Boolean(d.externalId) !== Boolean(d.documentId), {
+    message: "Provide exactly one of externalId or documentId.",
+  });
+
+export type ArchiveDocumentInput = z.infer<typeof ArchiveDocumentInputSchema>;
+
+export interface ArchiveDocumentResult {
+  documentId: string;
+  externalId: string | null;
+  title: string;
+  archivedFrom: string | null;
+}
+
+export async function archiveDocumentByRef(
+  userId: string,
+  input: ArchiveDocumentInput,
+): Promise<ArchiveDocumentResult> {
+  const filters = [
+    eq(schema.clients.userId, userId),
+    eq(schema.projects.slug, input.projectSlug),
+  ];
+  if (input.externalId) {
+    filters.push(eq(schema.documents.externalId, input.externalId));
+  } else if (input.documentId) {
+    filters.push(eq(schema.documents.id, input.documentId));
+  }
+
+  const rows = await db
+    .select({
+      documentId: schema.documents.id,
+      externalId: schema.documents.externalId,
+      title: schema.documents.title,
+      currentStatus: schema.documents.status,
+    })
+    .from(schema.documents)
+    .innerJoin(schema.projects, eq(schema.projects.id, schema.documents.projectId))
+    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
+    .where(and(...filters))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) {
+    throw new CurationError(
+      "document_not_found",
+      `Document not found in ${input.projectSlug} for ref ${input.externalId ?? input.documentId}.`,
+      404,
+    );
+  }
+
+  await db
+    .update(schema.documents)
+    .set({ status: ARCHIVED_STATUS, updatedAt: sql`now()` })
+    .where(eq(schema.documents.id, row.documentId));
+
+  return {
+    documentId: row.documentId,
+    externalId: row.externalId,
+    title: row.title,
+    archivedFrom: row.currentStatus,
+  };
 }
