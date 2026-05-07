@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ApiKeyRow } from "@/lib/api-keys";
 import {
@@ -9,6 +9,190 @@ import {
   createKeyAction,
   revokeKeyAction,
 } from "../actions";
+
+const MCP_URL = "https://www.workbrain.app/api/mcp";
+
+function base64UrlEncode(s: string): string {
+  // btoa runs in the browser; for ASCII JSON it's safe.
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function cursorInstallUrl(rawKey: string): string {
+  const config = {
+    url: MCP_URL,
+    headers: { Authorization: `Bearer ${rawKey}` },
+  };
+  return `https://cursor.com/install-mcp?name=workbrain&config=${base64UrlEncode(JSON.stringify(config))}`;
+}
+
+function claudeCliCommand(rawKey: string): string {
+  return `claude mcp add workbrain --scope user --transport http \\
+  ${MCP_URL} \\
+  --header "Authorization: Bearer ${rawKey}"`;
+}
+
+function cursorJsonSnippet(rawKey: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        workbrain: {
+          url: MCP_URL,
+          headers: { Authorization: `Bearer ${rawKey}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+function claudeDesktopJsonSnippet(rawKey: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        workbrain: {
+          type: "http",
+          url: MCP_URL,
+          headers: { Authorization: `Bearer ${rawKey}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(value).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      className="rounded border border-zinc-700 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function ConnectInstructionsForKey({ rawKey }: { rawKey: string }) {
+  const [tab, setTab] = useState<"cursor" | "cli" | "vscode" | "desktop">("cursor");
+  const cursorUrl = cursorInstallUrl(rawKey);
+  const cliCommand = claudeCliCommand(rawKey);
+  const cursorJson = cursorJsonSnippet(rawKey);
+  const desktopJson = claudeDesktopJsonSnippet(rawKey);
+
+  const tabs: ReadonlyArray<{ id: typeof tab; label: string }> = [
+    { id: "cursor", label: "Cursor" },
+    { id: "cli", label: "Claude Code (CLI)" },
+    { id: "vscode", label: "Claude Code (VS Code)" },
+    { id: "desktop", label: "Claude Desktop" },
+  ];
+
+  return (
+    <div>
+      <p className="mb-2 text-[11px] uppercase tracking-wide text-emerald-200/80">
+        Connect this key to your IDE
+      </p>
+      <div className="mb-2 flex flex-wrap gap-1">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded px-2 py-1 text-[10px] font-medium transition ${
+              tab === t.id
+                ? "bg-emerald-500/20 text-emerald-100 ring-1 ring-emerald-400/40"
+                : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "cursor" ? (
+        <div className="space-y-2">
+          <a
+            href={cursorUrl}
+            className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500"
+          >
+            Add to Cursor →
+          </a>
+          <p className="text-[11px] text-emerald-200/70">
+            One click — opens Cursor and auto-installs the MCP server. If Cursor isn't installed
+            or the link doesn't open, fallback below: paste the JSON into{" "}
+            <code className="font-mono">~/.cursor/mcp.json</code>.
+          </p>
+          <details className="rounded border border-zinc-800 bg-zinc-950">
+            <summary className="cursor-pointer px-3 py-2 text-[11px] text-zinc-400">
+              Manual fallback (~/.cursor/mcp.json)
+            </summary>
+            <div className="border-t border-zinc-800 p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-mono text-[10px] text-zinc-500">
+                  ~/.cursor/mcp.json
+                </span>
+                <CopyButton value={cursorJson} />
+              </div>
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] text-zinc-200">
+                {cursorJson}
+              </pre>
+            </div>
+          </details>
+        </div>
+      ) : null}
+
+      {tab === "cli" ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-emerald-200/70">
+              Run in any terminal — registers globally for all folders.
+            </span>
+            <CopyButton value={cliCommand} />
+          </div>
+          <pre className="overflow-x-auto rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
+            {cliCommand}
+          </pre>
+        </div>
+      ) : null}
+
+      {tab === "vscode" ? (
+        <div className="space-y-2">
+          <p className="text-[11px] text-emerald-200/70">
+            Run the CLI command above (the Claude Code VS Code extension shares
+            <code className="font-mono"> ~/.claude.json</code> with the CLI). After running,
+            reload VS Code (Cmd/Ctrl+Shift+P → "Reload Window").
+          </p>
+          <pre className="overflow-x-auto rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
+            {cliCommand}
+          </pre>
+        </div>
+      ) : null}
+
+      {tab === "desktop" ? (
+        <div className="space-y-2">
+          <p className="text-[11px] text-emerald-200/70">
+            Edit{" "}
+            <code className="font-mono">claude_desktop_config.json</code> (Settings → Developer
+            → Edit Config) and merge the snippet below. Restart Claude Desktop.
+          </p>
+          <div className="flex items-center justify-end">
+            <CopyButton value={desktopJson} />
+          </div>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
+            {desktopJson}
+          </pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const TIMESTAMP = new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" });
 
@@ -84,26 +268,16 @@ function CreateForm() {
       ) : null}
 
       {state.status === "success" ? (
-        <div className="space-y-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
-          <p className="font-medium">
-            Key for "{state.label}" created. Copy it now — it won't be shown again.
-          </p>
-          <code className="block break-all rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
-            {state.rawKey}
-          </code>
+        <div className="space-y-4 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-100">
           <div>
-            <p className="mb-1 text-[11px] uppercase tracking-wide text-emerald-200/80">
-              Connect Claude Code in any repo
+            <p className="font-medium">
+              Key for "{state.label}" created. Copy it now — it won't be shown again.
             </p>
-            <pre className="overflow-x-auto rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
-{`claude mcp add workbrain --transport http \\
-  https://www.workbrain.app/api/mcp \\
-  --header "Authorization: Bearer ${state.rawKey}"`}
-            </pre>
-            <p className="mt-1 text-[11px] text-emerald-200/70">
-              One command, no clone, no build. Available in any folder you open Claude Code from.
-            </p>
+            <code className="mt-2 block break-all rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
+              {state.rawKey}
+            </code>
           </div>
+          <ConnectInstructionsForKey rawKey={state.rawKey} />
         </div>
       ) : null}
     </div>
