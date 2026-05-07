@@ -85,6 +85,12 @@ export default async function DashboardPage() {
             Overview across all clients and projects you own.
           </p>
         </div>
+        <Link
+          href="/projects/new"
+          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500"
+        >
+          + New project
+        </Link>
       </header>
 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
