@@ -84,17 +84,26 @@ function CreateForm() {
       ) : null}
 
       {state.status === "success" ? (
-        <div className="space-y-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
+        <div className="space-y-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
           <p className="font-medium">
             Key for "{state.label}" created. Copy it now — it won't be shown again.
           </p>
           <code className="block break-all rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
             {state.rawKey}
           </code>
-          <p className="text-[11px] text-emerald-200/70">
-            Use as <code className="font-mono">Authorization: Bearer {state.rawKey.slice(0, 12)}…</code>{" "}
-            in your IDE's MCP config or API calls.
-          </p>
+          <div>
+            <p className="mb-1 text-[11px] uppercase tracking-wide text-emerald-200/80">
+              Connect Claude Code in any repo
+            </p>
+            <pre className="overflow-x-auto rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-emerald-200">
+{`claude mcp add workbrain --transport http \\
+  https://www.workbrain.app/api/mcp \\
+  --header "Authorization: Bearer ${state.rawKey}"`}
+            </pre>
+            <p className="mt-1 text-[11px] text-emerald-200/70">
+              One command, no clone, no build. Available in any folder you open Claude Code from.
+            </p>
+          </div>
         </div>
       ) : null}
     </div>
@@ -117,9 +126,35 @@ function RevokeForm({ apiKeyId, label }: { apiKeyId: string; label: string }) {
   );
 }
 
+function ConnectInstructions() {
+  return (
+    <section className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
+      <h2 className="text-sm font-medium text-zinc-200">Connect an IDE to WorkBrain</h2>
+      <p className="mt-1 text-xs text-zinc-500">
+        WorkBrain exposes an MCP HTTP endpoint at{" "}
+        <code className="font-mono text-zinc-300">https://www.workbrain.app/api/mcp</code>. To
+        connect any IDE that speaks MCP (Claude Code, Cursor, Claude Desktop, etc.), point it
+        at that URL with one of your API keys. Below is the command for Claude Code; the
+        pattern is similar for other clients.
+      </p>
+      <pre className="mt-3 overflow-x-auto rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-zinc-200">
+{`claude mcp add workbrain --transport http \\
+  https://www.workbrain.app/api/mcp \\
+  --header "Authorization: Bearer wbk_REPLACE_WITH_YOUR_KEY"`}
+      </pre>
+      <p className="mt-2 text-[11px] text-zinc-500">
+        Create a new key below to get the full command pre-filled. Keys are shown once at
+        creation — the raw value is not retrievable later.
+      </p>
+    </section>
+  );
+}
+
 export function ApiKeysPage({ keys }: { keys: ApiKeyRow[] }) {
   return (
     <div className="space-y-6">
+      <ConnectInstructions />
+
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
         <h2 className="text-sm font-medium text-zinc-200">Create a new key</h2>
         <p className="mt-1 text-xs text-zinc-500">
