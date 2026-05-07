@@ -1,6 +1,166 @@
 import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 
+export class ProjectError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = "ProjectError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+
+function validateSlug(name: string, value: string): void {
+  if (!SLUG_PATTERN.test(value)) {
+    throw new ProjectError(
+      "invalid_slug",
+      `${name} must be lowercase letters, numbers and dashes (1-64 chars, no leading/trailing dash). Got: "${value}".`,
+      400,
+    );
+  }
+}
+
+export interface ClientRow {
+  clientId: string;
+  clientSlug: string;
+  clientName: string;
+}
+
+export async function listClientsForUser(userId: string): Promise<ClientRow[]> {
+  const rows = await db
+    .select({
+      clientId: schema.clients.id,
+      clientSlug: schema.clients.slug,
+      clientName: schema.clients.name,
+    })
+    .from(schema.clients)
+    .where(eq(schema.clients.userId, userId))
+    .orderBy(schema.clients.slug);
+  return rows;
+}
+
+export interface CreateProjectInput {
+  // Either pick an existing client by id...
+  existingClientId?: string;
+  // ...or create a new one with these fields:
+  newClientSlug?: string;
+  newClientName?: string;
+  // Project fields:
+  projectSlug: string;
+  projectName: string;
+  persist: boolean;
+}
+
+export interface CreatedProject {
+  clientSlug: string;
+  projectSlug: string;
+}
+
+export async function createProject(
+  userId: string,
+  input: CreateProjectInput,
+): Promise<CreatedProject> {
+  validateSlug("Project slug", input.projectSlug);
+  if (input.projectName.trim().length === 0) {
+    throw new ProjectError("missing_project_name", "Project name is required.", 400);
+  }
+
+  let clientId: string;
+  let clientSlug: string;
+
+  if (input.existingClientId) {
+    const rows = await db
+      .select({
+        clientId: schema.clients.id,
+        clientSlug: schema.clients.slug,
+      })
+      .from(schema.clients)
+      .where(
+        and(eq(schema.clients.id, input.existingClientId), eq(schema.clients.userId, userId)),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      throw new ProjectError("client_not_found", "Selected client does not exist.", 404);
+    }
+    clientId = row.clientId;
+    clientSlug = row.clientSlug;
+  } else {
+    if (!input.newClientSlug || !input.newClientName) {
+      throw new ProjectError(
+        "missing_client",
+        "Pick an existing client or provide a new client slug + name.",
+        400,
+      );
+    }
+    validateSlug("Client slug", input.newClientSlug);
+
+    // Check for slug collision under this user.
+    const existing = await db
+      .select({ id: schema.clients.id })
+      .from(schema.clients)
+      .where(
+        and(
+          eq(schema.clients.userId, userId),
+          eq(schema.clients.slug, input.newClientSlug),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) {
+      throw new ProjectError(
+        "duplicate_client",
+        `A client with slug "${input.newClientSlug}" already exists.`,
+        409,
+      );
+    }
+
+    const inserted = await db
+      .insert(schema.clients)
+      .values({
+        userId,
+        slug: input.newClientSlug,
+        name: input.newClientName.trim(),
+      })
+      .returning({ id: schema.clients.id, slug: schema.clients.slug });
+    const row = inserted[0];
+    if (!row) {
+      throw new ProjectError("client_insert_failed", "Failed to create client.", 500);
+    }
+    clientId = row.id;
+    clientSlug = row.slug;
+  }
+
+  // Project slug must be unique within the chosen client.
+  const dupe = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(
+      and(eq(schema.projects.clientId, clientId), eq(schema.projects.slug, input.projectSlug)),
+    )
+    .limit(1);
+  if (dupe[0]) {
+    throw new ProjectError(
+      "duplicate_project",
+      `A project with slug "${input.projectSlug}" already exists under that client.`,
+      409,
+    );
+  }
+
+  await db.insert(schema.projects).values({
+    clientId,
+    slug: input.projectSlug,
+    name: input.projectName.trim(),
+    persist: input.persist,
+  });
+
+  return { clientSlug, projectSlug: input.projectSlug };
+}
+
 export interface ProjectDetail {
   projectId: string;
   projectSlug: string;
