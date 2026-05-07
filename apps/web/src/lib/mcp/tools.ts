@@ -32,7 +32,9 @@ import {
   ingestPaste,
 } from "../paste";
 import { type LinkDocumentsInput, LinkDocumentsInputSchema, linkDocuments } from "../links";
+import { type ProjectOverview, getProjectOverview } from "../projects";
 import { type SearchInput, SearchInputSchema, type SearchResult, search } from "../search";
+import { type ProjectRow, getProjectsForUser } from "../stats";
 
 export interface ToolDefinition<I, O> {
   name: string;
@@ -131,6 +133,28 @@ const archiveDocumentTool: ToolDefinition<ArchiveDocumentInput, ArchiveDocumentR
   handler: (userId, input) => archiveDocumentByRef(userId, input),
 };
 
+const ListProjectsInputSchema = z.object({}).optional();
+
+const listProjectsTool: ToolDefinition<unknown, ProjectRow[]> = {
+  name: "list_projects",
+  description:
+    "List all projects the active user owns, with client name, slug, doc/chunk counts, persistence flag and last-invocation timestamp. Use this when the user opens a fresh chat and you don't yet know which project they want to work on — present the list as a numbered menu and ask them to pick. Also use when the user asks 'qué proyectos tengo' or similar discovery questions.",
+  schema: ListProjectsInputSchema as z.ZodTypeAny,
+  handler: (userId) => getProjectsForUser(userId),
+};
+
+const ProjectOverviewInputSchema = z.object({
+  projectSlug: z.string().min(1),
+});
+
+const projectOverviewTool: ToolDefinition<z.infer<typeof ProjectOverviewInputSchema>, ProjectOverview | null> = {
+  name: "project_overview",
+  description:
+    "Get a brief snapshot of a project: client + project name, canon flags (which sections have content), doc count by type, stakeholder count, pending drafts count, last 5 documents, last invocation timestamp. Use this RIGHT AFTER the user picks a project (from list_projects menu or by mentioning one) so they get context-on-arrival before starting real work. Keep the response short — 5-8 lines max.",
+  schema: ProjectOverviewInputSchema,
+  handler: (userId, input) => getProjectOverview(userId, input.projectSlug),
+};
+
 const searchTool: ToolDefinition<SearchInput, SearchResult> = {
   name: "search",
   description:
@@ -167,6 +191,8 @@ const composeContextTool: ToolDefinition<
 };
 
 export const TOOLS: ReadonlyArray<ToolDefinition<unknown, unknown>> = [
+  listProjectsTool,
+  projectOverviewTool,
   proposeDocumentTool,
   listDraftsTool,
   approveDraftTool,

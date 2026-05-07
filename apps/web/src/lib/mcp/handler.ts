@@ -4,6 +4,7 @@
 // each request is independent, no session tracking.
 
 import { z } from "zod";
+import { MCP_INSTRUCTIONS } from "./instructions";
 import { TOOLS, findTool } from "./tools";
 
 const PROTOCOL_VERSION = "2025-06-18";
@@ -160,6 +161,7 @@ export async function handleJsonRpcRequest(
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
+        instructions: MCP_INSTRUCTIONS,
       });
 
     case "notifications/initialized":
