@@ -78,6 +78,13 @@ producto se usa desde el browser.
 | 4.9 | CSV export de invocations | ~1h |
 | 4.15 | Image/attachment support en documents | ~3-4h. Hoy `ingest_paste` toma solo markdown. Workaround: pegar screenshot en Claude Code chat → pedir transcripción a markdown → ingestar texto. Falta: blob storage (Vercel Blob o S3), columna `documents.attachments`, render en doc detail page. Útil para diagramas de arquitectura, mockups, errores de consola. |
 
+### 🟡 Pending — committed for next session
+
+| ID | Task | Estimación |
+|---|---|---|
+| **4.17** | **Drafts + confirmation pattern** | ~4-5h. Agente usa `propose_document` (no `ingest_paste` directo) → escribe a `draft_documents` con `status=pending`. Nueva página `/projects/<...>/drafts` con review/approve/reject/edit. 5 nuevas MCP tools: `propose_document`, `list_drafts`, `approve_draft`, `reject_draft`, `archive_document`. `CLAUDE.md` template generator + endpoint `/api/projects/<...>/claude-md` + botón "Download CLAUDE.md" en page del proyecto. Convención obligatoria: agente presenta propuesta detallada y pide confirmación en lenguaje natural ANTES de cualquier mutación al corpus. Resuelve: el sistema no muere si el usuario nunca dice "guardalo" — el agente captura proactivamente al draft. |
+| **4.18** | **Cross-project canon (user-level conventions)** | Promovido desde Phase 6+. Las convenciones que Carlos aplica a TODOS los proyectos (ej: Salesforce naming + test rules) capturadas una vez a nivel usuario y inyectadas como contexto adicional en `compose_context` de cualquier proyecto. Sin esto, copy-pastea las mismas conventions per-cliente. Schema: tabla `user_canon` (userId, conventions, guidelines, architecture). UI: nueva sección en `/account` para editarlo. Compose merge: project canon overrides user canon donde haya conflicto. Carlos lo señaló como "super importantísimo" el 2026-05-07. |
+
 ## Phase 5 — Production deployment & resilience
 
 Antes de invitar a nadie: que esto despliegue limpio y no se pierdan datos.
