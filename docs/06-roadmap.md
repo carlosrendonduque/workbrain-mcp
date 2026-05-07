@@ -77,17 +77,18 @@ producto se usa desde el browser.
 | 4.8 | Toggle persist/ephemeral por proyecto | ~1h |
 | 4.9 | CSV export de invocations | ~1h |
 
-## Phase 5 — Production deployment & resilience ⬜
+## Phase 5 — Production deployment & resilience
 
 Antes de invitar a nadie: que esto despliegue limpio y no se pierdan datos.
 
-| ID | Task | Notas |
-|---|---|---|
-| 5.1 | Vercel project + env vars + dominio | `WORKBRAIN_SESSION_SECRET`, `DATABASE_URL`, etc. |
-| 5.2 | Neon producción (branch separado del dev) | + connection pooling tuning |
-| 5.3 | Corpus backup strategy | Auto-push hook · off-site mirror · restore drill |
-| 5.4 | E2E test suite | Playwright sobre el webapp + harness de curl para MCP |
-| 5.5 | Observabilidad básica | Logs aggregation · error tracking (Sentry?) · métricas básicas |
+| ID | Task | Estado | Notas |
+|---|---|---|---|
+| **5.1** | **Vercel project + env vars + dominio `workbrain.app`** | ✅ | Apex + www en SSL via Let's Encrypt, GitHub auto-deploy en push. |
+| **5.6** | **MCP HTTP transport en `/api/mcp`** | ✅ | Streamable HTTP per spec — un solo `claude mcp add --transport http` para conectar cualquier IDE sin clone/build local. 5 tools stateless: ingest_paste, search, record_decision, link_documents, compose_context. |
+| 5.2 | Neon producción (branch separado del dev) | ⬜ | + connection pooling tuning. Hoy dev y prod comparten la misma branch. |
+| 5.3 | Corpus backup strategy | ⬜ | Auto-push hook · off-site mirror · restore drill |
+| 5.4 | E2E test suite | ⬜ | Playwright sobre el webapp + harness de curl para MCP |
+| 5.5 | Observabilidad básica | ⬜ | Logs aggregation · error tracking (Sentry?) · métricas básicas |
 
 ## Phase 6 — Multi-user / multi-tenant ⬜
 

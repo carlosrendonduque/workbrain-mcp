@@ -8,17 +8,28 @@ been seeded (`pnpm db:seed:projects`, `db:meta:sync`, `db:stakeholders:sync`).
 
 ---
 
-## 0 · Verify state (1 min)
+## 0 · Connect Claude Code to WorkBrain (one-time, 30 s)
+
+WorkBrain runs at https://www.workbrain.app and exposes an MCP HTTP endpoint at
+`/api/mcp`. To use it from any IDE that speaks MCP (Claude Code, Cursor, etc.) just
+register the URL with your API key — no clone, no build, no local server.
 
 ```bash
-cd ~/repos/workbrain/workbrain
-git status                         # both repos clean
-node --version                     # 18.x is fine on this host
-ls .mcp.json .cursor/mcp.json      # both exist (Cursor + Claude Code MCP configs)
+claude mcp add workbrain --scope user --transport http \
+  https://www.workbrain.app/api/mcp \
+  --header "Authorization: Bearer wbk_REPLACE_WITH_YOUR_KEY"
 ```
 
-If both `*.json` files are present, Cursor and Claude Code already know how to talk to
-the WorkBrain MCP server.
+Get the key (and the full pre-filled command) from
+https://www.workbrain.app/account/api-keys → "Create a new key". The raw value
+shows only at creation; if you lose it, create another and revoke the old one.
+
+Verify it's reachable from any folder:
+
+```bash
+cd /tmp && claude mcp list
+# expected: workbrain: https://www.workbrain.app/api/mcp (HTTP) - ✓ Connected
+```
 
 ---
 
@@ -42,34 +53,22 @@ you test — every MCP call lands here in real time.
 
 ---
 
-## 2 · Pick an IDE client
+## 2 · Open Claude Code in the repo you actually want to work in
 
-Choose one and stick with it for this session:
+For real consulting work, that's the **client's** repo (a Salesforce DX project, a
+Next.js app, whatever). Not workbrain's own repo. Open the folder in VS Code with
+the Claude Code extension, or `cd /path/to/client-repo && claude` in a terminal.
 
-- **Option A — Cursor** (the primary target in the brief).
-- **Option B — Claude Code** CLI (faster to demo).
-
-The rest of this document uses **Claude Code** for the examples; Cursor is conceptually
-identical (same tools, just invoked from the chat panel).
-
----
-
-## 3 · Open an MCP session (terminal B)
-
-```bash
-cd ~/repos/workbrain/workbrain    # important: this is where .mcp.json lives
-claude
-```
-
-Inside Claude Code, confirm the MCP server is connected:
+Inside the chat:
 
 ```
 /mcp
 ```
 
-You should see a `workbrain` server with seven tools listed:
-`set_active_project`, `current_project`, `ingest_paste`, `search`, `record_decision`,
-`link_documents`, `compose_context`.
+Expected: `workbrain` listed with five tools (`ingest_paste`, `search`,
+`record_decision`, `link_documents`, `compose_context`). All of them are stateless
+— every call must specify `projectSlug` because there's no per-machine "active
+project" anymore.
 
 ---
 
@@ -78,17 +77,10 @@ You should see a `workbrain` server with seven tools listed:
 Drive the agent in natural language. Each step prints a row in `/audit` so you can
 inspect what actually happened.
 
-### 4.1 — Activate the project
+### 4.1 — Ingest a ticket without specifying the type (let the classifier decide)
 
-> Use the `set_active_project` tool to activate `prime-a/acme-finance`.
-
-Expected: `"Active project set to prime-a/acme-finance"`. Webapp `/audit` shows a new row
-with `operation: set_active_project`.
-
-### 4.2 — Ingest a ticket without specifying the type (let the classifier decide)
-
-> Ingest this as a new document using `ingest_paste`. Don't pass `type`, let the
-> classifier pick it.
+> Ingest this as a new document into project `acme-finance` using `ingest_paste`.
+> Don't pass `type`, let the classifier pick it.
 >
 > ```
 > TICKET-9001: Renewal flow breaks on Opportunity stage change
@@ -103,11 +95,11 @@ with `operation: set_active_project`.
 Behind the scenes (~5–10 s):
 - Classifier (Sonnet 4.6) infers `type=ticket`, `externalId=TICKET-9001`,
   `references=[TICKET-8870, adopt-voyage-rerank-2]`.
-- The `.md` is written to `corpus/prime-a/acme-finance/tickets/TICKET-9001.md` and the
-  corpus repo gets a fire-and-forget commit + push.
 - Content is chunked, embedded with Voyage, indexed in pgvector.
 - Auto-links the two references if those documents already exist in the project.
 - An audit row is recorded.
+- (In production the corpus disk-mirror is disabled — the database is the single
+  source of truth. Local dev still mirrors to `corpus/` and pushes to GitHub.)
 
 In the webapp:
 - `/projects/prime-a/acme-finance` → the `ticket` chip now has the new document, with
@@ -115,16 +107,17 @@ In the webapp:
 - `/audit` → expand the new `ingest_paste` row to inspect `userPrompt` and
   `retrievedChunks`.
 
-### 4.3 — Search
+### 4.2 — Search
 
-> Use `search` with the query "duplicate renewal" in the active project.
+> Use `search` with the query "duplicate renewal" in `acme-finance`.
 
 Returns chunks ordered by cosine similarity, second-pass reranked by Voyage rerank-2.
 Search itself records an audit row.
 
-### 4.4 — Compose context (the flagship)
+### 4.3 — Compose context (the flagship)
 
-> Use `compose_context` with `focusExternalId: "TICKET-9001"`.
+> Use `compose_context` against `acme-finance` with
+> `focusExternalId: "TICKET-9001"`.
 
 You get the full bundle: project canon, focus document with frontmatter, linked
 documents grouped by type, RAG chunks (rerank-aware), stakeholders, and a
