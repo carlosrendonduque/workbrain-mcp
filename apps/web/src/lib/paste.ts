@@ -346,10 +346,14 @@ export async function ingestPaste(
     };
 
     const repo = await loadRepoConfigFromEnv();
-    await ensureRepo(repo);
-    const written = await writeDocument(relativePath, frontmatter, input.content, {
-      rootPath: repo.rootPath,
-    });
+    let writtenRelativePath: string | null = null;
+    if (repo) {
+      await ensureRepo(repo);
+      const written = await writeDocument(relativePath, frontmatter, input.content, {
+        rootPath: repo.rootPath,
+      });
+      writtenRelativePath = written.relativePath;
+    }
 
     const inserted = await db
       .insert(schema.documents)
@@ -427,11 +431,13 @@ export async function ingestPaste(
       candidates: referenceCandidates,
     });
 
-    void commitAndPush(
-      written.relativePath,
-      `feat(ingest): ${finalType} ${finalExternalId ?? slugifyTitle(input.title)}`,
-      repo,
-    );
+    if (repo && writtenRelativePath) {
+      void commitAndPush(
+        writtenRelativePath,
+        `feat(ingest): ${finalType} ${finalExternalId ?? slugifyTitle(input.title)}`,
+        repo,
+      );
+    }
 
     await recordAudit({
       userId,
