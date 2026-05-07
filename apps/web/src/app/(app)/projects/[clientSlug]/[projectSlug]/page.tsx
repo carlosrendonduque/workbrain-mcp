@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listDrafts } from "@/lib/drafts";
 import { requireSession } from "@/lib/webapp-auth";
 import {
   getProjectByPath,
@@ -66,10 +67,12 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
   const project = await getProjectByPath(session.userId, clientSlug, projectSlug);
   if (!project) notFound();
 
-  const [types, docs] = await Promise.all([
+  const [types, docs, pendingDrafts] = await Promise.all([
     getTypeCountsForProject(project.projectId),
     listDocumentsForProject(project.projectId, { type, query: q }),
+    listDrafts(session.userId, { projectSlug, status: "pending" }),
   ]);
+  const pendingDraftsCount = pendingDrafts.length;
 
   const basePath = `/projects/${clientSlug}/${projectSlug}`;
 
@@ -102,6 +105,17 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
               Search
             </Link>
             <Link
+              href={`${basePath}/drafts`}
+              className="relative rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Drafts
+              {pendingDraftsCount > 0 ? (
+                <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300 ring-1 ring-amber-400/40">
+                  {pendingDraftsCount}
+                </span>
+              ) : null}
+            </Link>
+            <Link
               href={`${basePath}/ingest`}
               className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
             >
@@ -128,6 +142,13 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
               edit
             </Link>
           </div>
+          <a
+            href={`${basePath}/claude-md`}
+            className="text-[11px] text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
+            title="Download a CLAUDE.md to drop in your client's repo so the IDE agent knows how to use this project"
+          >
+            ↓ Download CLAUDE.md
+          </a>
         </div>
       </header>
 

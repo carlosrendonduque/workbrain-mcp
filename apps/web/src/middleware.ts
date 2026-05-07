@@ -13,6 +13,7 @@ export const config = {
     "/api/:path*",
     "/dashboard/:path*",
     "/projects/:path*",
+    "/drafts/:path*",
     "/audit/:path*",
     "/account/:path*",
   ],

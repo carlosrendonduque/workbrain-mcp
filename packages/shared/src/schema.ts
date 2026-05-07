@@ -212,3 +212,35 @@ export const stakeholders = pgTable("stakeholders", {
   communicationStyle: text("communication_style"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// -----------------------------
+// Drafts (Phase 4.17): proposals from the agent for the user to review
+// before they enter the corpus. Status flows pending → approved | rejected.
+// On approve, approved_document_id points at the freshly inserted document.
+// -----------------------------
+export const draftDocuments = pgTable(
+  "draft_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    proposedType: text("proposed_type").notNull(),
+    proposedTitle: text("proposed_title").notNull(),
+    proposedContent: text("proposed_content").notNull(),
+    proposedExternalId: text("proposed_external_id"),
+    proposedFrontmatter: jsonb("proposed_frontmatter").notNull().default({}),
+    proposalNote: text("proposal_note"),
+    status: text("status").notNull().default("pending"),
+    proposedBy: text("proposed_by").notNull().default("agent"),
+    approvedDocumentId: uuid("approved_document_id").references(() => documents.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    reviewedAt: timestamp("reviewed_at"),
+  },
+  (t) => [
+    index("draft_documents_project_status_idx").on(t.projectId, t.status),
+    index("draft_documents_created_at_idx").on(t.createdAt),
+  ],
+);

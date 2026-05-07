@@ -15,6 +15,13 @@
       "when": 1778152351545,
       "tag": "0001_nappy_turbo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778184825956,
+      "tag": "0002_careless_black_bolt",
+      "breakpoints": true
     }
   ]
 }
