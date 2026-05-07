@@ -14,9 +14,10 @@ export default async function ProjectsIndexPage() {
     <div className="px-8 py-8">
       <header className="mb-6 flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">Corpus</h1>
+          <h1 className="text-2xl font-semibold text-zinc-100">Projects</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Pick a project to browse its documents. Each project is fully isolated.
+            Pick a project to browse its corpus, ingest a document or compose context.
+            Each project is fully isolated from the others.
           </p>
         </div>
         <Link
