@@ -19,6 +19,21 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// User-level canon (Phase 4.18). One row per user holds the cross-project
+// conventions / guidelines / architecture that apply to ANY project the
+// user owns. Project-level canon overrides where it exists; user-level fills
+// gaps. Useful for a consultant whose Salesforce conventions are stable
+// regardless of which client they're engaging.
+export const userCanon = pgTable("user_canon", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  conventions: text("conventions"),
+  guidelines: text("guidelines"),
+  architecture: text("architecture"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const apiKeys = pgTable(
   "api_keys",
   {

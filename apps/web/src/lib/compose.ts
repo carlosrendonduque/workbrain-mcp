@@ -3,6 +3,7 @@ import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { db } from "./db";
 import { type SearchChunk, search } from "./search";
+import { getUserCanon, mergeCanon } from "./user-canon";
 
 export const ComposeContextInputSchema = z
   .object({
@@ -52,6 +53,11 @@ export interface ComposeContextResult {
     conventions: string | null;
     guidelines: string | null;
     architecture: string | null;
+    source: {
+      conventions: "project" | "user" | "none";
+      guidelines: "project" | "user" | "none";
+      architecture: "project" | "user" | "none";
+    };
   };
   focus: FocusDocument | null;
   linked: Record<string, LinkedDocument[]>;
@@ -100,9 +106,19 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function buildInstructions(args: { clientName: string; projectName: string }): string {
+function buildInstructions(args: {
+  clientName: string;
+  projectName: string;
+  canonSources: { conventions: string; guidelines: string; architecture: string };
+}): string {
+  const sourceLine = (label: string, source: string): string => {
+    if (source === "project") return `- ${label}: project-level (specific to ${args.projectName})`;
+    if (source === "user") return `- ${label}: user-level (cross-project default)`;
+    return `- ${label}: not configured`;
+  };
+
   return `You are working inside WorkBrain. The structured payload above gives you:
-- The active client and project, plus its firm canon (conventions, guidelines, architecture).
+- The active client and project, plus the merged canon (conventions, guidelines, architecture).
 - The current focus document (if any) with its frontmatter and full content.
 - Other documents explicitly linked from the focus, grouped by type.
 - Relevant chunks retrieved from the corpus by semantic similarity (RAG, reranked when possible).
@@ -111,9 +127,14 @@ function buildInstructions(args: { clientName: string; projectName: string }): s
 Active client: ${args.clientName}
 Active project: ${args.projectName}
 
+Canon layering (project overrides user-level where they conflict):
+${sourceLine("Conventions", args.canonSources.conventions)}
+${sourceLine("Guidelines", args.canonSources.guidelines)}
+${sourceLine("Architecture", args.canonSources.architecture)}
+
 Inviolable rules:
-1. Stay within ${args.clientName}. Do NOT mention or reuse information from any other client, not even as analogies ("in another project we saw X"). Each client is an architecturally guaranteed silo.
-2. If a recommendation conflicts with the project conventions above, explicitly flag the conflict and ask the user to confirm before applying. Do not improvise against the canon.
+1. Stay within ${args.clientName}. Do NOT mention or reuse information from any other client, not even as analogies ("in another project we saw X"). Each client is an architecturally guaranteed silo. User-level canon is allowed because it's the user's own conventions, not another client's data.
+2. If a recommendation conflicts with the canon above (project or user), explicitly flag the conflict and ask the user to confirm before applying. Do not improvise against the canon.
 3. If the retrieved context is insufficient to answer, say so. Do not fabricate stakeholders, decisions, or conventions that are not in the corpus.
 4. When citing a ticket or document, use its external_id (e.g. TICKET-1234).
 5. For drafts directed at stakeholders, respect the indicated communication_style. Do not improvise tone.
@@ -316,18 +337,30 @@ export async function composeContext(
 
     const stakeholders = await loadStakeholders(project.projectId);
 
+    const userCanon = await getUserCanon(userId);
+    const mergedCanon = mergeCanon(
+      {
+        conventions: project.conventions,
+        guidelines: project.guidelines,
+        architecture: project.architecture,
+      },
+      userCanon,
+    );
+
     const instructionsForAgent = buildInstructions({
       clientName: project.clientName,
       projectName: project.projectName,
+      canonSources: mergedCanon.source,
     });
 
     const result: ComposeContextResult = {
       project: { slug: project.projectSlug, name: project.projectName },
       client: { slug: project.clientSlug, name: project.clientName },
       canon: {
-        conventions: project.conventions,
-        guidelines: project.guidelines,
-        architecture: project.architecture,
+        conventions: mergedCanon.conventions,
+        guidelines: mergedCanon.guidelines,
+        architecture: mergedCanon.architecture,
+        source: mergedCanon.source,
       },
       focus,
       linked,
