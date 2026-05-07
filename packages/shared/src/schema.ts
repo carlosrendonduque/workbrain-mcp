@@ -34,6 +34,32 @@ export const apiKeys = pgTable(
   (t) => [index("api_keys_user_idx").on(t.userId)],
 );
 
+// Invite-only signup tokens. The owner of an existing account generates a
+// token, shares it out-of-band with someone they want to onboard, and that
+// person redeems it at /signup to create their own user + first API key.
+// Tokens are one-time-use and can optionally expire.
+export const signupTokens = pgTable(
+  "signup_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenHash: text("token_hash").notNull().unique(),
+    label: text("label").notNull(),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    usedByUserId: uuid("used_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    usedAt: timestamp("used_at"),
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("signup_tokens_creator_idx").on(t.createdByUserId),
+    index("signup_tokens_used_idx").on(t.usedByUserId),
+  ],
+);
+
 // -----------------------------
 // Tenancy
 // -----------------------------

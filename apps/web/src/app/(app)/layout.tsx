@@ -10,6 +10,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Projects", href: "/projects" },
   { label: "Audit", href: "/audit" },
   { label: "API keys", href: "/account/api-keys" },
+  { label: "Invite", href: "/account/invite-tokens" },
 ];
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
