@@ -1,6 +1,7 @@
-import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
+import { ARCHIVED_STATUS } from "./curation";
 import { db } from "./db";
 import { type RerankUsage, embed, rerank } from "./embeddings";
 
@@ -151,12 +152,17 @@ export async function search(userId: string, input: SearchInput): Promise<Search
     const distance = cosineDistance(schema.chunks.embedding, queryVec);
     const similaritySql = sql<number>`(1 - (${distance}))`;
 
+    const archivedFilter = or(
+      isNull(schema.documents.status),
+      ne(schema.documents.status, ARCHIVED_STATUS),
+    );
     const conditions = [
       // SAFETY: project_id filter is mandatory and always present.
       // Cross-project leakage is the worst possible bug for this product.
       eq(schema.chunks.projectId, project.projectId),
       sql`(1 - (${distance})) >= ${minSimilarity}`,
     ];
+    if (archivedFilter) conditions.push(archivedFilter);
     if (input.types && input.types.length > 0) {
       conditions.push(inArray(schema.chunks.type, input.types));
     }

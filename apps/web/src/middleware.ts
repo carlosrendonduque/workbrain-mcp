@@ -9,7 +9,13 @@ export const config = {
   // and Next internals are excluded by Next's default matcher behavior, but
   // /login is intentionally NOT listed here — its page handles its own session
   // check and redirects an already-authenticated user.
-  matcher: ["/api/:path*", "/dashboard/:path*", "/projects/:path*", "/audit/:path*"],
+  matcher: [
+    "/api/:path*",
+    "/dashboard/:path*",
+    "/projects/:path*",
+    "/audit/:path*",
+    "/account/:path*",
+  ],
 };
 
 function unauthorizedJson(message: string): NextResponse {

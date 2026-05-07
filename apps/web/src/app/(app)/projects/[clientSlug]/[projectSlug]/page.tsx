@@ -93,11 +93,41 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
             {NUMBER.format(project.chunkCount)} chunks
           </p>
         </div>
-        <div className="flex gap-1">
-          <CanonPill label="conventions" present={Boolean(project.conventions)} />
-          <CanonPill label="guidelines" present={Boolean(project.guidelines)} />
-          <CanonPill label="architecture" present={Boolean(project.architecture)} />
-          {project.persist ? null : <CanonPill label="ephemeral" present={false} />}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <Link
+              href={`${basePath}/search`}
+              className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Search
+            </Link>
+            <Link
+              href={`${basePath}/ingest`}
+              className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              + New document
+            </Link>
+            <Link
+              href={`${basePath}/compose`}
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500"
+            >
+              Compose context
+            </Link>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <CanonPill label="conventions" present={Boolean(project.conventions)} />
+              <CanonPill label="guidelines" present={Boolean(project.guidelines)} />
+              <CanonPill label="architecture" present={Boolean(project.architecture)} />
+              {project.persist ? null : <CanonPill label="ephemeral" present={false} />}
+            </div>
+            <Link
+              href={`${basePath}/canon`}
+              className="text-[11px] text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
+            >
+              edit
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -162,16 +192,28 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
           </p>
         ) : (
           <ul className="divide-y divide-zinc-800/70">
-            {docs.map((d) => (
-              <li key={d.documentId} className="px-5 py-3">
+            {docs.map((d) => {
+              const ref = d.externalId ?? d.documentId;
+              return (
+              <li key={d.documentId} className="group px-5 py-3 hover:bg-zinc-900/40">
                 <div className="flex items-center gap-2">
                   <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-300">
                     {d.type}
                   </span>
                   {d.externalId ? (
-                    <span className="font-mono text-xs text-indigo-300">{d.externalId}</span>
+                    <Link
+                      href={`${basePath}/${ref}`}
+                      className="font-mono text-xs text-indigo-300 hover:text-indigo-200"
+                    >
+                      {d.externalId}
+                    </Link>
                   ) : null}
-                  <span className="font-medium text-zinc-100">{d.title}</span>
+                  <Link
+                    href={`${basePath}/${ref}`}
+                    className="font-medium text-zinc-100 group-hover:text-indigo-200"
+                  >
+                    {d.title}
+                  </Link>
                   <span className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
                     {d.outgoingLinkCount > 0 || d.incomingLinkCount > 0 ? (
                       <span title="outgoing → · incoming ←">
@@ -191,7 +233,8 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
                   </p>
                 ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>
