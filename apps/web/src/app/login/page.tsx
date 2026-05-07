@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { readSession } from "@/lib/webapp-auth";
 import { LoginForm } from "./login-form";
@@ -25,6 +26,12 @@ export default async function LoginPage({
           <p className="mt-1 text-sm text-zinc-400">Sign in with your API key.</p>
         </div>
         <LoginForm next={next} />
+        <p className="mt-4 text-center text-xs text-zinc-500">
+          Don't have an account?{" "}
+          <Link href="/signup" className="text-zinc-300 underline-offset-2 hover:underline">
+            Redeem an invitation
+          </Link>
+        </p>
       </div>
     </main>
   );
