@@ -1,0 +1,1 @@
+ALTER TABLE "draft_documents" ADD COLUMN "related_external_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -252,6 +252,10 @@ export const draftDocuments = pgTable(
     proposedExternalId: text("proposed_external_id"),
     proposedFrontmatter: jsonb("proposed_frontmatter").notNull().default({}),
     proposalNote: text("proposal_note"),
+    // List of external_ids the agent flagged as related to this draft. On
+    // approve, each becomes a `related` document_links row when the other
+    // side already exists as a real document. Soft co-mention semantics.
+    relatedExternalIds: jsonb("related_external_ids").notNull().default([]),
     status: text("status").notNull().default("pending"),
     proposedBy: text("proposed_by").notNull().default("agent"),
     approvedDocumentId: uuid("approved_document_id").references(() => documents.id, {

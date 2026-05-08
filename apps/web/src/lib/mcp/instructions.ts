@@ -100,14 +100,25 @@ The flow is:
   1. User pastes content with multiple distinct pieces.
   2. You identify each distinct piece (a ticket = 1, a chat thread = 1,
      a decision = 1, a screenshot transcription = 1).
-  3. You call \`propose_document\` ONCE PER PIECE, with type, title,
-     content, externalId (when present like ACME-1234), proposalNote.
-  4. You acknowledge: \`[Drafts queued: 3 (ACME-1041 ticket, ACME-1017
-     ticket, Teams thread with Priyal)]\`
-  5. THEN you continue the conversation, analyze, suggest exploration,
+  3. Plan the externalIds you'll assign to each (RES-XXXX for tickets,
+     slug for decisions/conventions).
+  4. You call \`propose_document\` ONCE PER PIECE, passing:
+     - type, title, content, externalId, proposalNote
+     - **\`relatedExternalIds\`**: include (a) the externalIds of all
+       OTHER drafts in this same batch (so they're soft-linked as
+       co-captured), AND (b) any specific tickets that this piece is
+       about (e.g., a teams_thread discussing ACME-1017 has
+       relatedExternalIds=['ACME-1017']; a decision for ACME-1042 has
+       relatedExternalIds=['ACME-1042']). Without these, with 1000
+       tickets the system can never resurface "what came in together".
+  5. You acknowledge: \`[Drafts queued: 3 (ACME-1041 ticket, ACME-1017
+     ticket, Teams thread with Priyal — all co-linked)]\`
+  6. THEN you continue the conversation, analyze, suggest exploration,
      etc.
 
-Failure to capture before doing anything else is a contract violation.
+Failure to capture before doing anything else, OR omitting
+relatedExternalIds when multiple pieces co-occur, is a contract
+violation.
 
 ================================================================
 RULE 0.5 — NO LOCAL MEMORY. WORKBRAIN IS THE ONLY SOURCE OF TRUTH.

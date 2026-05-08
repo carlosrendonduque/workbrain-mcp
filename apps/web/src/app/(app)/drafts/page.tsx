@@ -137,6 +137,19 @@ export default async function GlobalDraftsPage({ searchParams }: PageProps) {
                           {formatTimestamp(d.createdAt)}
                         </span>
                       </div>
+                      {d.relatedExternalIds.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-1 text-[10px] text-zinc-500">
+                          <span className="uppercase tracking-wide">co-captured:</span>
+                          {d.relatedExternalIds.map((ref) => (
+                            <span
+                              key={ref}
+                              className="rounded border border-zinc-800 bg-zinc-900 px-1 py-0.5 font-mono text-zinc-400"
+                            >
+                              {ref}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
