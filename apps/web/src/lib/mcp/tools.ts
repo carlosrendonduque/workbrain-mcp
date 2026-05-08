@@ -42,6 +42,7 @@ import {
   getTicketProgress,
   setTicketProgress,
 } from "../ticket-progress";
+import { FULL_CONTRACT } from "./instructions";
 
 export interface ToolDefinition<I, O> {
   name: string;
@@ -203,6 +204,16 @@ const getTicketProgressTool: ToolDefinition<
     getTicketProgress(userId, input.projectSlug, input.externalId),
 };
 
+const GetAgentContractInputSchema = z.object({}).optional();
+
+const getAgentContractTool: ToolDefinition<unknown, { contract: string }> = {
+  name: "get_agent_contract",
+  description:
+    "Returns the full WorkBrain agent contract as a markdown string: vocabulary mapping, content-shape→type mapping, drafts pattern, phase gates, repo validation, git branch prompt, inviolable rules. The summary delivered at MCP initialize is intentionally short to survive client-side truncation; call this whenever you need the full version. Always safe to call — read-only, no side effects.",
+  schema: GetAgentContractInputSchema as z.ZodTypeAny,
+  handler: async () => ({ contract: FULL_CONTRACT }),
+};
+
 const searchTool: ToolDefinition<SearchInput, SearchResult> = {
   name: "search",
   description:
@@ -239,6 +250,7 @@ const composeContextTool: ToolDefinition<
 };
 
 export const TOOLS: ReadonlyArray<ToolDefinition<unknown, unknown>> = [
+  getAgentContractTool,
   listProjectsTool,
   projectOverviewTool,
   proposeDocumentTool,
