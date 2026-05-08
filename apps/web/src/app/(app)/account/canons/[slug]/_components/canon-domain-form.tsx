@@ -2,9 +2,9 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { type SaveUserCanonState, saveUserCanonAction } from "../actions";
+import { type CanonDomainState, saveCanonDomainAction } from "../../actions";
 
-const initialState: SaveUserCanonState = { status: "idle" };
+const initialState: CanonDomainState = { status: "idle" };
 
 interface SectionProps {
   name: "conventions" | "guidelines" | "architecture";
@@ -25,7 +25,7 @@ function CanonSection({ name, label, description, defaultValue }: SectionProps) 
         name={name}
         defaultValue={initial}
         rows={14}
-        placeholder={`Add your personal ${label.toLowerCase()}. Markdown is supported.`}
+        placeholder={`Add the domain's ${label.toLowerCase()}. Markdown is supported.`}
         className="w-full resize-y bg-transparent px-4 py-3 font-mono text-xs leading-relaxed text-zinc-200 outline-none focus:bg-zinc-900/40"
       />
       <footer className="border-t border-zinc-800 px-4 py-2 text-[11px] text-zinc-500">
@@ -43,48 +43,51 @@ function SubmitButton() {
       disabled={pending}
       className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      {pending ? "Saving…" : "Save personal canon"}
+      {pending ? "Saving…" : "Save canon"}
     </button>
   );
 }
 
-export function UserCanonForm({
+export function CanonDomainForm({
+  slug,
   conventions,
   guidelines,
   architecture,
 }: {
+  slug: string;
   conventions: string | null;
   guidelines: string | null;
   architecture: string | null;
 }) {
-  const [state, formAction] = useActionState(saveUserCanonAction, initialState);
+  const [state, formAction] = useActionState(saveCanonDomainAction, initialState);
 
   return (
     <form action={formAction} className="space-y-4">
+      <input type="hidden" name="slug" value={slug} />
       <CanonSection
         name="conventions"
         label="Conventions"
-        description="Cross-project naming, formatting, code style. The defaults you apply to ANY client unless that project overrides."
+        description="Naming, formatting, code style for this domain. Defaults applied to ANY project in this domain unless project canon overrides."
         defaultValue={conventions}
       />
       <CanonSection
         name="guidelines"
         label="Guidelines"
-        description="Your way of working. Testing posture, PR review approach, when you choose RTF vs Apex, etc."
+        description="Way of working in this domain. Testing posture, PR review approach, when you choose pattern X over Y, etc."
         defaultValue={guidelines}
       />
       <CanonSection
         name="architecture"
         label="Architecture"
-        description="Your standard architectural patterns and constraints across engagements (e.g. always use trigger handlers, prefer LWC, security_enforced everywhere)."
+        description="Standard architectural patterns and constraints for this domain."
         defaultValue={architecture}
       />
 
       <div className="flex items-center justify-between gap-3">
         <p className="max-w-2xl text-[11px] text-zinc-500">
-          Project-level canon overrides this for projects that have their own
-          conventions/guidelines/architecture. Use this for what is true regardless of
-          client.
+          Project-level canon overrides this for projects in this domain that have
+          their own conventions/guidelines/architecture. Use this for what is true
+          regardless of which project in the domain you're working on.
         </p>
         <SubmitButton />
       </div>

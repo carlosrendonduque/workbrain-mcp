@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listCanonDomainsForUser } from "@/lib/canon-domains";
 import { getProjectByPath } from "@/lib/projects";
 import { requireSession } from "@/lib/webapp-auth";
 import { CanonForm } from "./_components/canon-form";
+import { ProjectDomainForm } from "./_components/domain-form";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,7 @@ export default async function CanonEditorPage({ params }: PageProps) {
   const { clientSlug, projectSlug } = await params;
   const project = await getProjectByPath(session.userId, clientSlug, projectSlug);
   if (!project) notFound();
+  const domains = await listCanonDomainsForUser(session.userId);
 
   const projectBasePath = `/projects/${clientSlug}/${projectSlug}`;
 
@@ -43,7 +46,15 @@ export default async function CanonEditorPage({ params }: PageProps) {
         </p>
       </header>
 
-      <div className="max-w-3xl">
+      <div className="max-w-3xl space-y-4">
+        <ProjectDomainForm
+          clientSlug={clientSlug}
+          projectSlug={projectSlug}
+          currentDomainId={project.domainId}
+          currentDomainSlug={project.domainSlug}
+          currentDomainName={project.domainName}
+          domains={domains}
+        />
         <CanonForm
           clientSlug={clientSlug}
           projectSlug={projectSlug}

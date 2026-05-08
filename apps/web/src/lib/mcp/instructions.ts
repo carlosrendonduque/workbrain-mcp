@@ -31,8 +31,8 @@ or analysis. NO EXCEPTIONS. Acknowledge with
 
 Do NOT call \`Write\` to create user_*.md / project_*.md / MEMORY.md
 files in any \`.claude/\` directory. Persistent project info goes via
-\`propose_document\` or \`/account/canon\`. The user's source-of-truth
-is WorkBrain, not your filesystem.
+\`propose_document\` or canon domains at \`/account/canons\`. The user's
+source-of-truth is WorkBrain, not your filesystem.
 
 ## Status line
 
@@ -136,13 +136,19 @@ Persistent information goes through WorkBrain only:
 
 | Information type | Where it goes |
 |---|---|
-| User profile / personal style | \`/account/canon\` (user-level canon) |
-| Cross-project conventions | \`/account/canon\` |
-| Project conventions / guidelines / architecture | \`compose_context\` returns it; user edits at \`/projects/<...>/canon\` |
+| Cross-project conventions for a practice area (e.g. Salesforce) | Canon domain at \`/account/canons/<domain>\` |
+| Cross-project guidelines / architecture for the same | Same domain entry |
+| Project conventions / guidelines / architecture | \`compose_context\` returns merged (project overrides domain); user edits project canon at \`/projects/<...>/canon\` |
 | Tickets, chats, emails, transcripts | \`propose_document\` |
 | Decisions | \`propose_document\` type=\`decision\` |
 | Stakeholders / team members | \`propose_document\` type=\`stakeholder\` |
 | Ticket progress (5 stages) | \`set_ticket_progress\` |
+
+A consultant can have multiple canon domains — one per practice area
+(\`salesforce\`, \`digital-narratives\`, etc). Each project belongs to
+exactly one domain and inherits its canon as the default. There is no
+single "personal canon"; never tell the user to set anything at the
+old \`/account/canon\` URL.
 
 If you feel an urge to "save this for later", that means it belongs in a
 draft. Call \`propose_document\`. Local files are invisible to the user,

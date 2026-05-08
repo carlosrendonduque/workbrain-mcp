@@ -179,6 +179,10 @@ export interface CreateProjectInput {
   projectSlug: string;
   projectName: string;
   persist: boolean;
+  // Canon domain this project inherits from. Required for new projects;
+  // legacy projects created before domains existed have null in DB and the
+  // UI nudges the user to assign one from the editor.
+  domainId: string;
   // Optional VCS metadata. When set, the agent uses repoUrl to validate or
   // suggest clone, and defaultBranch as the base for feature branches.
   repoUrl?: string;
@@ -280,8 +284,30 @@ export async function createProject(
     );
   }
 
+  // Validate the chosen domain belongs to this user. Cheap defensive query —
+  // skip if creation is happening through code paths that don't yet supply
+  // a domainId (e.g. legacy seeds), then domain_id stays null.
+  const domainRows = await db
+    .select({ id: schema.canonDomains.id })
+    .from(schema.canonDomains)
+    .where(
+      and(
+        eq(schema.canonDomains.id, input.domainId),
+        eq(schema.canonDomains.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (!domainRows[0]) {
+    throw new ProjectError(
+      "domain_not_found",
+      "Selected canon domain does not exist for this user.",
+      404,
+    );
+  }
+
   await db.insert(schema.projects).values({
     clientId,
+    domainId: input.domainId,
     slug: input.projectSlug,
     name: input.projectName.trim(),
     persist: input.persist,
@@ -305,8 +331,56 @@ export interface ProjectDetail {
   architecture: string | null;
   repoUrl: string | null;
   defaultBranch: string | null;
+  domainId: string | null;
+  domainSlug: string | null;
+  domainName: string | null;
   documentCount: number;
   chunkCount: number;
+}
+
+export async function setProjectDomain(
+  userId: string,
+  projectId: string,
+  domainId: string,
+): Promise<void> {
+  // Validate ownership of project AND domain in one shot.
+  const projectRows = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.clients.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (!projectRows[0]) {
+    throw new ProjectError("project_not_found", "Project not found.", 404);
+  }
+
+  const domainRows = await db
+    .select({ id: schema.canonDomains.id })
+    .from(schema.canonDomains)
+    .where(
+      and(
+        eq(schema.canonDomains.id, domainId),
+        eq(schema.canonDomains.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (!domainRows[0]) {
+    throw new ProjectError(
+      "domain_not_found",
+      "Selected canon domain does not exist for this user.",
+      404,
+    );
+  }
+
+  await db
+    .update(schema.projects)
+    .set({ domainId })
+    .where(eq(schema.projects.id, projectId));
 }
 
 export interface DocumentRow {
@@ -349,9 +423,13 @@ export async function getProjectByPath(
       architecture: schema.projects.architecture,
       repoUrl: schema.projects.repoUrl,
       defaultBranch: schema.projects.defaultBranch,
+      domainId: schema.projects.domainId,
+      domainSlug: schema.canonDomains.slug,
+      domainName: schema.canonDomains.name,
     })
     .from(schema.projects)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
+    .leftJoin(schema.canonDomains, eq(schema.canonDomains.id, schema.projects.domainId))
     .where(
       and(
         eq(schema.clients.userId, userId),

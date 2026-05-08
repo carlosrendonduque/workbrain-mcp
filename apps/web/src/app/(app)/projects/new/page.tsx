@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { listCanonDomainsForUser } from "@/lib/canon-domains";
 import { listClientsForUser } from "@/lib/projects";
 import { requireSession } from "@/lib/webapp-auth";
 import { CreateProjectForm } from "./_components/create-project-form";
@@ -7,7 +8,10 @@ export const dynamic = "force-dynamic";
 
 export default async function NewProjectPage() {
   const session = await requireSession();
-  const clients = await listClientsForUser(session.userId);
+  const [clients, domains] = await Promise.all([
+    listClientsForUser(session.userId),
+    listCanonDomainsForUser(session.userId),
+  ]);
 
   return (
     <div className="px-8 py-8">
@@ -30,7 +34,7 @@ export default async function NewProjectPage() {
       </header>
 
       <div className="max-w-3xl">
-        <CreateProjectForm clients={clients} />
+        <CreateProjectForm clients={clients} domains={domains} />
       </div>
     </div>
   );
