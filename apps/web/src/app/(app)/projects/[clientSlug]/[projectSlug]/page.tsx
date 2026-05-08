@@ -148,6 +148,25 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
               edit
             </Link>
           </div>
+          <div className="flex items-center gap-1.5">
+            {project.domainSlug ? (
+              <Link
+                href={`/account/canons/${project.domainSlug}`}
+                className="rounded border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-indigo-300 transition hover:border-indigo-400/60"
+                title={`Inherits canon from "${project.domainName}"`}
+              >
+                domain · {project.domainSlug}
+              </Link>
+            ) : (
+              <Link
+                href={`${basePath}/canon`}
+                className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300 transition hover:border-amber-400/60"
+                title="Assign a canon domain so the agent inherits cross-project conventions"
+              >
+                ⚠ no domain — assign
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 

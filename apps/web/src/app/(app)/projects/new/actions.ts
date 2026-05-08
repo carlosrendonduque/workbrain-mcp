@@ -36,6 +36,16 @@ export async function createProjectAction(
 
   const repoUrl = readField(formData, "repoUrl");
   const defaultBranch = readField(formData, "defaultBranch");
+  const domainId = readField(formData, "domainId");
+
+  if (!domainId) {
+    return {
+      status: "error",
+      message:
+        "Pick a canon domain. Create one at /account/canons if you don't have any yet.",
+      code: "missing_domain",
+    };
+  }
 
   try {
     let result: Awaited<ReturnType<typeof createProject>>;
@@ -57,6 +67,7 @@ export async function createProjectAction(
         persist,
         repoUrl,
         defaultBranch,
+        domainId,
       });
     } else {
       const existingClientId = readField(formData, "existingClientId");
@@ -74,6 +85,7 @@ export async function createProjectAction(
         persist,
         repoUrl,
         defaultBranch,
+        domainId,
       });
     }
 

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { db } from "./db";
 import { type SearchChunk, search } from "./search";
-import { getUserCanon, mergeCanon } from "./user-canon";
+import { getCanonDomainById, mergeCanon } from "./canon-domains";
 
 export const ComposeContextInputSchema = z
   .object({
@@ -54,10 +54,11 @@ export interface ComposeContextResult {
     guidelines: string | null;
     architecture: string | null;
     source: {
-      conventions: "project" | "user" | "none";
-      guidelines: "project" | "user" | "none";
-      architecture: "project" | "user" | "none";
+      conventions: "project" | "domain" | "none";
+      guidelines: "project" | "domain" | "none";
+      architecture: "project" | "domain" | "none";
     };
+    domain: { slug: string; name: string } | null;
   };
   focus: FocusDocument | null;
   linked: Record<string, LinkedDocument[]>;
@@ -110,10 +111,16 @@ function buildInstructions(args: {
   clientName: string;
   projectName: string;
   canonSources: { conventions: string; guidelines: string; architecture: string };
+  domain: { slug: string; name: string } | null;
 }): string {
+  const domainLabel = args.domain
+    ? `domain "${args.domain.name}" (${args.domain.slug})`
+    : "no canon domain assigned";
+
   const sourceLine = (label: string, source: string): string => {
     if (source === "project") return `- ${label}: project-level (specific to ${args.projectName})`;
-    if (source === "user") return `- ${label}: user-level (cross-project default)`;
+    if (source === "domain")
+      return `- ${label}: ${domainLabel} (cross-project default)`;
     return `- ${label}: not configured`;
   };
 
@@ -126,15 +133,16 @@ function buildInstructions(args: {
 
 Active client: ${args.clientName}
 Active project: ${args.projectName}
+Canon domain: ${domainLabel}
 
-Canon layering (project overrides user-level where they conflict):
+Canon layering (project overrides domain-level where they conflict):
 ${sourceLine("Conventions", args.canonSources.conventions)}
 ${sourceLine("Guidelines", args.canonSources.guidelines)}
 ${sourceLine("Architecture", args.canonSources.architecture)}
 
 Inviolable rules:
-1. Stay within ${args.clientName}. Do NOT mention or reuse information from any other client, not even as analogies ("in another project we saw X"). Each client is an architecturally guaranteed silo. User-level canon is allowed because it's the user's own conventions, not another client's data.
-2. If a recommendation conflicts with the canon above (project or user), explicitly flag the conflict and ask the user to confirm before applying. Do not improvise against the canon.
+1. Stay within ${args.clientName}. Do NOT mention or reuse information from any other client, not even as analogies ("in another project we saw X"). Each client is an architecturally guaranteed silo. Domain-level canon is allowed because it's the user's own cross-project conventions for this practice area, not another client's data.
+2. If a recommendation conflicts with the canon above (project or domain), explicitly flag the conflict and ask the user to confirm before applying. Do not improvise against the canon.
 3. If the retrieved context is insufficient to answer, say so. Do not fabricate stakeholders, decisions, or conventions that are not in the corpus.
 4. When citing a ticket or document, use its external_id (e.g. TICKET-1234).
 5. For drafts directed at stakeholders, respect the indicated communication_style. Do not improvise tone.
@@ -152,6 +160,7 @@ interface ResolvedProject {
   conventions: string | null;
   guidelines: string | null;
   architecture: string | null;
+  domainId: string | null;
 }
 
 async function resolveProject(userId: string, projectSlug: string): Promise<ResolvedProject> {
@@ -166,6 +175,7 @@ async function resolveProject(userId: string, projectSlug: string): Promise<Reso
       conventions: schema.projects.conventions,
       guidelines: schema.projects.guidelines,
       architecture: schema.projects.architecture,
+      domainId: schema.projects.domainId,
     })
     .from(schema.projects)
     .innerJoin(schema.clients, eq(schema.projects.clientId, schema.clients.id))
@@ -337,20 +347,23 @@ export async function composeContext(
 
     const stakeholders = await loadStakeholders(project.projectId);
 
-    const userCanon = await getUserCanon(userId);
+    const domainCanon = project.domainId
+      ? await getCanonDomainById(userId, project.domainId)
+      : null;
     const mergedCanon = mergeCanon(
       {
         conventions: project.conventions,
         guidelines: project.guidelines,
         architecture: project.architecture,
       },
-      userCanon,
+      domainCanon,
     );
 
     const instructionsForAgent = buildInstructions({
       clientName: project.clientName,
       projectName: project.projectName,
       canonSources: mergedCanon.source,
+      domain: mergedCanon.domain,
     });
 
     const result: ComposeContextResult = {
@@ -361,6 +374,7 @@ export async function composeContext(
         guidelines: mergedCanon.guidelines,
         architecture: mergedCanon.architecture,
         source: mergedCanon.source,
+        domain: mergedCanon.domain,
       },
       focus,
       linked,

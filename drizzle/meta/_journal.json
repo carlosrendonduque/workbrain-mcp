@@ -50,6 +50,13 @@
       "when": 1778202299259,
       "tag": "0006_round_unus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778206463792,
+      "tag": "0007_unique_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
+import type { CanonDomainSummary } from "@/lib/canon-domains";
 import type { ClientRow } from "@/lib/projects";
 import { type CreateProjectState, createProjectAction } from "../actions";
 
@@ -20,7 +22,13 @@ function SubmitButton() {
   );
 }
 
-export function CreateProjectForm({ clients }: { clients: ClientRow[] }) {
+export function CreateProjectForm({
+  clients,
+  domains,
+}: {
+  clients: ClientRow[];
+  domains: CanonDomainSummary[];
+}) {
   const [state, formAction] = useActionState(createProjectAction, initialState);
   const [mode, setMode] = useState<"existing" | "new-client">(
     clients.length > 0 ? "existing" : "new-client",
@@ -177,6 +185,55 @@ export function CreateProjectForm({ clients }: { clients: ClientRow[] }) {
           />
           Persist documents (uncheck for ephemeral / scratch projects)
         </label>
+      </fieldset>
+
+      <fieldset className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
+        <legend className="px-2 text-sm font-medium text-zinc-200">Canon domain</legend>
+        <p className="mb-3 text-xs text-zinc-500">
+          Pick the cross-project canon this project inherits. New projects must belong
+          to a domain. If you don't have one yet,{" "}
+          <Link href="/account/canons" className="text-indigo-300 hover:text-indigo-200">
+            create one first
+          </Link>
+          .
+        </p>
+        {domains.length === 0 ? (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            You don't have any canon domains yet. Create one at{" "}
+            <Link
+              href="/account/canons"
+              className="underline-offset-2 hover:underline"
+            >
+              /account/canons
+            </Link>{" "}
+            before creating a project.
+          </div>
+        ) : (
+          <div>
+            <label
+              htmlFor="domainId"
+              className="block text-xs font-medium uppercase tracking-wide text-zinc-500"
+            >
+              Domain
+            </label>
+            <select
+              id="domainId"
+              name="domainId"
+              required
+              defaultValue=""
+              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500"
+            >
+              <option value="" disabled>
+                Pick a domain…
+              </option>
+              {domains.map((d) => (
+                <option key={d.domainId} value={d.domainId}>
+                  {d.slug} — {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </fieldset>
 
       <fieldset className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">

@@ -16,7 +16,7 @@ function buildNavItems(pendingDrafts: number): NavItem[] {
       badge: pendingDrafts > 0 ? String(pendingDrafts) : undefined,
     },
     { label: "Audit", href: "/audit" },
-    { label: "Personal canon", href: "/account/canon" },
+    { label: "Canons", href: "/account/canons" },
     { label: "API keys", href: "/account/api-keys" },
     { label: "Invite", href: "/account/invite-tokens" },
     { label: "Setup guide", href: "/setup" },

@@ -19,20 +19,29 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// User-level canon (Phase 4.18). One row per user holds the cross-project
-// conventions / guidelines / architecture that apply to ANY project the
-// user owns. Project-level canon overrides where it exists; user-level fills
-// gaps. Useful for a consultant whose Salesforce conventions are stable
-// regardless of which client they're engaging.
-export const userCanon = pgTable("user_canon", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  conventions: text("conventions"),
-  guidelines: text("guidelines"),
-  architecture: text("architecture"),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+// Canon domains (Phase 4.18b). One user can curate multiple cross-project
+// canon "buckets" — e.g. a consultant who works on Salesforce AND on
+// digital narratives needs to keep those bodies of conventions completely
+// separate. A project belongs to at most one domain (nullable for legacy
+// projects). Project-level canon still overrides where it exists; the
+// domain canon fills gaps.
+export const canonDomains = pgTable(
+  "canon_domains",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    conventions: text("conventions"),
+    guidelines: text("guidelines"),
+    architecture: text("architecture"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [index("canon_domains_user_slug_idx").on(t.userId, t.slug)],
+);
 
 export const apiKeys = pgTable(
   "api_keys",
@@ -99,6 +108,12 @@ export const projects = pgTable(
     clientId: uuid("client_id")
       .notNull()
       .references(() => clients.id),
+    // Canon domain this project inherits from. Nullable so legacy projects
+    // (created before domains were introduced) keep working — UI nudges the
+    // user to assign one. New projects must select a domain at creation.
+    domainId: uuid("domain_id").references(() => canonDomains.id, {
+      onDelete: "set null",
+    }),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
     persist: boolean("persist").notNull().default(true),
@@ -109,7 +124,10 @@ export const projects = pgTable(
     defaultBranch: text("default_branch"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (t) => [index("projects_client_slug_idx").on(t.clientId, t.slug)],
+  (t) => [
+    index("projects_client_slug_idx").on(t.clientId, t.slug),
+    index("projects_domain_idx").on(t.domainId),
+  ],
 );
 
 // -----------------------------
