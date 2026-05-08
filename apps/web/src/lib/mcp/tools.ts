@@ -54,7 +54,7 @@ const ingestTool: ToolDefinition<z.infer<typeof IngestPasteInputSchema>, IngestP
 const proposeDocumentTool: ToolDefinition<ProposeDocumentInput, CreatedDraft> = {
   name: "propose_document",
   description:
-    "PREFERRED capture path. Creates a DRAFT — the document does NOT enter the corpus until the user approves it. Use this proactively when you detect curation-worthy content during a conversation: pasted tickets, design decisions the user articulated, non-obvious explanations, screenshots transcribed to markdown, etc. Tell the user casually that you added a draft (e.g. '[Draft added: title]') so they know it's queued. Drafts persist across sessions and are reviewed at /projects/<client>/<project>/drafts. The user approves with approve_draft (which then runs the actual ingest_paste), edits with the same tool, or discards with reject_draft.",
+    "MANDATORY FIRST CALL when the user message contains pasted structured content. Call this BEFORE any other tool — before Bash, Read, Grep, search, compose_context, before any analysis or recap. Detect distinct pieces in the input (separate tickets, chat threads, decisions, code blocks, transcribed screenshots) and call once per piece. NOT calling this before doing analysis on pasted content is a contract violation: the user's corpus stays empty while you 'know' things they can't see, audit, or transfer. Drafts persist across sessions and are reviewed at /projects/<client>/<project>/drafts. After capture, acknowledge with `[Drafts queued: N (<short list>)]` and only then continue.",
   schema: ProposeDocumentInputSchema,
   handler: (userId, input) => proposeDocument(userId, input),
 };
@@ -158,7 +158,7 @@ const projectOverviewTool: ToolDefinition<z.infer<typeof ProjectOverviewInputSch
 const searchTool: ToolDefinition<SearchInput, SearchResult> = {
   name: "search",
   description:
-    "Semantic search over a project's corpus. Returns the top-K chunks ordered by similarity, with optional Voyage rerank-2 second pass. Filter by document types, externalId, or createdAt date range. Always scope to one projectSlug — cross-project search is not supported by design.",
+    "Semantic search over a project's corpus. Do NOT call this until you have first called propose_document for any structured content the user pasted in their current message — capture before search. Returns top-K chunks ordered by similarity with optional Voyage rerank-2 second pass. Filter by types/externalId/dateRange. Always scoped to one projectSlug; cross-project search is not supported.",
   schema: SearchInputSchema,
   handler: (userId, input) => search(userId, input),
 };
@@ -185,7 +185,7 @@ const composeContextTool: ToolDefinition<
 > = {
   name: "compose_context",
   description:
-    "FLAGSHIP. Assemble the structured context an IDE coding agent needs to work a ticket: project canon (conventions, guidelines, architecture), focus document with frontmatter, linked documents grouped by type, RAG-retrieved chunks (reranked when possible), stakeholder profiles, and a pre-formatted instructions_for_agent block. No LLM call — pure structural composition. Provide either focusExternalId (working a known ticket) or focusText (free-form question or code snippet).",
+    "FLAGSHIP. Assembles the structured context for working a ticket: project canon, focus document with frontmatter, linked docs grouped by type, RAG-retrieved chunks (reranked), stakeholder profiles, instructions_for_agent block. Do NOT call this until you have first called propose_document for any structured content the user pasted in their current message — capture before compose. No LLM call — pure structural composition. Provide either focusExternalId (known ticket) or focusText (free-form snippet).",
   schema: ComposeContextInputSchema,
   handler: (userId, input) => composeContext(userId, input),
 };
