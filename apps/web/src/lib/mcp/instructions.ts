@@ -49,11 +49,13 @@ menu. After user picks, call \`project_overview\` for a 5-line snapshot.
 ## Fresh-start checklist (when project has repoUrl)
 
 Right after \`project_overview\` returns a project with \`repoUrl\`,
-present a checklist BEFORE any analysis or other tool call:
-(1) repo — clone, validate existing, or skip; (2) branch — feature
-branch from default, from another base, or stay. Never assume the
-user is in the right folder/branch. Optional to skip ("workflow
-propio"), but always presented.
+present a checklist BEFORE any analysis or other tool call. **The cwd
+is the clone target — never propose alternative paths and never
+search the filesystem for other clones.** Three branches:
+(A) cwd empty → \`git clone <url> .\`;
+(B) cwd is a git repo of the same remote → reuse;
+(C) cwd is foreign → STOP, ask user to reopen IDE in the right place.
+Then ask about feature branch.
 
 ## Drafts → corpus only after explicit confirmation
 
@@ -217,26 +219,50 @@ call \`project_overview\` directly.
 FRESH-START CHECKLIST (immediately after project pick, when repoUrl is set)
 ================================================================
 
+The user opens their IDE in the directory where they want the work to
+happen. Treat the **current working directory (cwd) as the canonical
+clone target**. Never propose alternative paths, never search the
+filesystem for other clones, never suggest "clone over here instead".
+The user owns location choice — your job is to validate what is in
+cwd, then act.
+
 Right after \`project_overview\` returns a project with \`repoUrl\` set,
-**before any analysis, file read, or other tool call**, present this
-checklist to the user. This is the proactive entry point — never
-skip the prompt unless the user has already explicitly stated they're
-in setup mode this session.
+**before any analysis, file read, or other tool call**, inspect the cwd
+and propose exactly ONE of these three branches via a structured
+prompt to the user:
 
-  Antes de arrancar, alineemos el setup del repo:
+**A. cwd is empty (or contains only inert files like a stray .DS_Store
+   or one-off notes — nothing that looks like a different project)**
+   → Proposal: \`git clone <repoUrl> .\` (into current dir).
+   → Action only after the user confirms.
 
-  1. **Repo**: \`<repoUrl>\` (default branch: \`<defaultBranch ?? 'main'>\`)
-     - ¿Carpeta limpia y querés que clonemos? → \`git clone <repoUrl>\`
-     - ¿Ya estás en una carpeta con git apuntando a este repo? → confirmá y
-       sigo (corro \`git remote get-url origin\` para validar)
-     - ¿Workflow propio (sin clone)? → saltamos este paso
+**B. cwd is already a git repo and its origin matches \`repoUrl\`**
+   → Confirm via \`git remote get-url origin\` first.
+   → Proposal: reuse this clone, move to the branch step.
 
-  2. **Rama de trabajo**:
-     - Cortar \`feature/<ticketRef>-<slug>\` desde \`<defaultBranch>\` (default)
-     - Cortar desde otra rama base — ¿cuál?
-     - Seguir en la rama actual (no recomendado salvo para spike rápido)
+**C. cwd is a git repo with a DIFFERENT remote, OR cwd has non-trivial
+   content that doesn't look like part of \`repoUrl\`**
+   → STOP. Show the user what you see and tell them:
 
-  Decime y arrancamos.
+     "tu cwd (\`<cwd>\`) no parece corresponder a este proyecto:
+      - <razón concreta: 'tiene git con remote X', o 'tiene archivos
+        Y, Z'>
+      Salí de Claude Code, abrilo en una carpeta apropiada (vacía o
+      con un clon válido del repo), y volvé. Si querés saltar el
+      setup del repo y trabajar en este cwd igual, decímelo
+      explícitamente."
+
+   → Do NOT propose alternative paths. Do NOT search ~/repos or the
+     home dir for matching clones. Do NOT reuse a clone found
+     elsewhere. The cwd is the authority on where work happens.
+
+After the repo step, present the **branch step** (also as a structured
+prompt):
+
+  Rama de trabajo:
+  - Cortar \`feature/<ticketRef>-<slug>\` desde \`<defaultBranch>\` (default)
+  - Cortar desde otra rama base — ¿cuál?
+  - Seguir en la rama actual (no recomendado salvo para spike rápido)
 
 The checklist is **always shown** when repoUrl is set, even if the user
 already mentioned a ticket. It establishes ground state before code
@@ -249,25 +275,17 @@ When \`repoUrl\` is unset, skip the checklist entirely — the project
 doesn't have a linked repo (consultant-side or non-git workflow).
 
 ================================================================
-REPO VALIDATION & BRANCH (running checks after the checklist)
+RUNTIME GUARDS (after the checklist is settled)
 ================================================================
 
-The FRESH-START CHECKLIST above is the canonical entry point for
-repo setup. The rules below cover what to actually run:
+**Repo validation** (only when reusing an existing clone):
+- Run \`git remote get-url origin\` and compare against \`repoUrl\`. If
+  mismatch, immediately STOP. Do not silently proceed — the cwd has
+  drifted to another project since the checklist or the user moved
+  files around.
 
-**Repo validation**:
-- If user picks "ya estoy en una carpeta con git": run
-  \`git remote get-url origin\` and compare against \`repoUrl\`. If
-  mismatch, warn: "tu carpeta apunta a otro repo, ¿estás en el lugar
-  correcto?". Don't proceed until clarified.
-- If user picks "clonemos": run \`git clone <repoUrl>\` (HTTPS auth via
-  user's existing creds; SSH if the URL is git@... and the user has
-  keys configured).
-
-**Branch creation**:
-- If user picks the feature branch option: \`git checkout -b feature/<ticketRef>-<slug>\`
-  from the chosen base.
-- If you're already running and detect that the current branch is
+**Branch guard**:
+- If you're already running and detect the current branch is
   \`main\`/\`master\`/\`develop\`/\`<defaultBranch>\` AND the user is asking
   you to touch code without having confirmed the checklist, STOP and
   re-present the checklist. Do not edit code on a protected branch
