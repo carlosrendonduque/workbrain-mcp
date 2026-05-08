@@ -104,9 +104,14 @@ function toolResult(payload: unknown, isError: boolean): unknown {
   };
 }
 
+export interface RequestContext {
+  sessionId: string | null;
+}
+
 async function dispatchToolCall(
   userId: string,
   params: unknown,
+  ctx: RequestContext,
 ): Promise<{ result?: unknown; error?: { code: number; message: string; data?: unknown } }> {
   if (!isToolCallParams(params)) {
     return { error: { code: JSONRPC_INVALID_PARAMS, message: "Invalid tool call params." } };
@@ -135,7 +140,7 @@ async function dispatchToolCall(
   }
 
   try {
-    const out = await tool.handler(userId, parsed.data);
+    const out = await tool.handler(userId, parsed.data, ctx);
     return { result: toolResult(out, false) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -146,6 +151,7 @@ async function dispatchToolCall(
 export async function handleJsonRpcRequest(
   userId: string,
   body: unknown,
+  ctx: RequestContext = { sessionId: null },
 ): Promise<JsonRpcResponse | null> {
   if (!isJsonRpcRequest(body)) {
     return failure(null, JSONRPC_INVALID_REQUEST, "Invalid JSON-RPC envelope.");
@@ -175,7 +181,7 @@ export async function handleJsonRpcRequest(
       return success(id, buildToolsList());
 
     case "tools/call": {
-      const out = await dispatchToolCall(userId, body.params);
+      const out = await dispatchToolCall(userId, body.params, ctx);
       if (out.error) {
         return failure(id, out.error.code, out.error.message, out.error.data);
       }

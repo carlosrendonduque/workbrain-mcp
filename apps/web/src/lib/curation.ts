@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { type InvocationMeta, recordInvocation } from "./audit";
 import { db, schema } from "./db";
 
 export class CurationError extends Error {
@@ -85,7 +86,9 @@ export interface ArchiveDocumentResult {
 export async function archiveDocumentByRef(
   userId: string,
   input: ArchiveDocumentInput,
+  meta: InvocationMeta = {},
 ): Promise<ArchiveDocumentResult> {
+  const start = Date.now();
   const filters = [
     eq(schema.clients.userId, userId),
     eq(schema.projects.slug, input.projectSlug),
@@ -122,6 +125,32 @@ export async function archiveDocumentByRef(
     .update(schema.documents)
     .set({ status: ARCHIVED_STATUS, updatedAt: sql`now()` })
     .where(eq(schema.documents.id, row.documentId));
+
+  // Look up projectId for the audit row.
+  const projectRows = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
+    .where(
+      and(
+        eq(schema.clients.userId, userId),
+        eq(schema.projects.slug, input.projectSlug),
+      ),
+    )
+    .limit(1);
+
+  await recordInvocation({
+    userId,
+    projectId: projectRows[0]?.id ?? null,
+    operation: "archive_document",
+    activityKind: "document_archived",
+    targetExternalId: row.externalId,
+    sessionId: meta.sessionId,
+    status: "success",
+    userPrompt: `archive_document ${input.externalId ?? input.documentId} title="${row.title}"`,
+    latencyMs: Date.now() - start,
+    responseText: row.documentId,
+  });
 
   return {
     documentId: row.documentId,

@@ -4,6 +4,9 @@ import { db, schema } from "./db";
 export interface InvocationDetail {
   id: string;
   operation: string;
+  activityKind: string | null;
+  targetExternalId: string | null;
+  sessionId: string | null;
   status: string;
   errorDetail: string | null;
   latencyMs: number | null;
@@ -20,6 +23,86 @@ export interface InvocationDetail {
   projectSlug: string | null;
   projectName: string | null;
   clientSlug: string | null;
+}
+
+// Stable, semantic kinds of activity for the project feed. Only mutations
+// land in the feed (reads stay in /audit). Add new kinds here as the
+// surface grows; the feed renderer falls back to the raw operation name
+// for unknown kinds.
+export const ACTIVITY_KINDS = [
+  "draft_proposed",
+  "draft_approved",
+  "draft_rejected",
+  "draft_archived",
+  "document_ingested",
+  "document_archived",
+  "document_linked",
+  "ticket_progress_set",
+  "canon_project_edited",
+  "canon_domain_edited",
+  "canon_domain_created",
+  "project_domain_assigned",
+  "project_created",
+  "project_repo_updated",
+] as const;
+export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+
+// Caller-side metadata that travels through every lib mutation so the
+// audit row knows which session triggered it. Always optional — web
+// actions and one-off scripts have no session and pass null.
+export interface InvocationMeta {
+  sessionId?: string | null;
+}
+
+interface RecordInvocationInput {
+  userId: string;
+  projectId: string | null;
+  operation: string;
+  activityKind?: ActivityKind | null;
+  targetExternalId?: string | null;
+  sessionId?: string | null;
+  status: "success" | "error";
+  userPrompt?: string;
+  systemPrompt?: string;
+  retrievedChunks?: unknown;
+  responseText?: string | null;
+  provider?: string;
+  model?: string;
+  errorDetail?: string | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  costUsd?: string | null;
+  latencyMs?: number | null;
+}
+
+// Single insert path for everything that ends up in the audit table. Never
+// throws — invocations are observability and must not break the user-facing
+// operation if they fail. Errors are logged to stderr.
+export async function recordInvocation(input: RecordInvocationInput): Promise<void> {
+  try {
+    await db.insert(schema.invocations).values({
+      userId: input.userId,
+      projectId: input.projectId,
+      operation: input.operation,
+      activityKind: input.activityKind ?? null,
+      targetExternalId: input.targetExternalId ?? null,
+      sessionId: input.sessionId ?? null,
+      userPrompt: input.userPrompt ?? "",
+      systemPrompt: input.systemPrompt ?? "",
+      retrievedChunks: input.retrievedChunks ?? [],
+      responseText: input.responseText ?? null,
+      provider: input.provider ?? "none",
+      model: input.model ?? "none",
+      status: input.status,
+      errorDetail: input.errorDetail ?? null,
+      promptTokens: input.promptTokens ?? null,
+      completionTokens: input.completionTokens ?? null,
+      costUsd: input.costUsd ?? null,
+      latencyMs: input.latencyMs ?? null,
+    });
+  } catch (err) {
+    console.error(`recordInvocation failed for ${input.operation}:`, err);
+  }
 }
 
 export interface ListInvocationsOpts {
@@ -70,6 +153,9 @@ export async function listInvocations(
       .select({
         id: schema.invocations.id,
         operation: schema.invocations.operation,
+        activityKind: schema.invocations.activityKind,
+        targetExternalId: schema.invocations.targetExternalId,
+        sessionId: schema.invocations.sessionId,
         status: schema.invocations.status,
         errorDetail: schema.invocations.errorDetail,
         latencyMs: schema.invocations.latencyMs,
@@ -96,6 +182,121 @@ export async function listInvocations(
       .offset(offset);
 
   return { rows, total, page, pageSize, totalPages };
+}
+
+// Activity feed row — one mutation, human-legible. Reads stay out of the
+// feed (operation NOT NULL on activityKind filter) so the surface remains
+// scannable. Drill into /audit?session=... for the raw row.
+export interface ActivityRow {
+  id: string;
+  ts: Date | string;
+  actor: "agent" | "user";
+  kind: string;
+  operation: string;
+  status: string;
+  targetExternalId: string | null;
+  sessionId: string | null;
+  description: string;
+  errorDetail: string | null;
+}
+
+interface ListActivityOpts {
+  projectId?: string;
+  sessionId?: string;
+  limit?: number;
+}
+
+export async function listActivity(
+  userId: string,
+  opts: ListActivityOpts = {},
+): Promise<ActivityRow[]> {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+
+  const filters: SQL[] = [
+    eq(schema.invocations.userId, userId),
+    // Only mutations land in the feed — kinds were set explicitly in
+    // recordInvocation. Reads (search, compose_context, list_*) have NULL
+    // activityKind and are filtered out here.
+    sql`${schema.invocations.activityKind} is not null`,
+  ];
+  if (opts.projectId) filters.push(eq(schema.invocations.projectId, opts.projectId));
+  if (opts.sessionId) filters.push(eq(schema.invocations.sessionId, opts.sessionId));
+
+  const rows = await db
+    .select({
+      id: schema.invocations.id,
+      createdAt: schema.invocations.createdAt,
+      operation: schema.invocations.operation,
+      activityKind: schema.invocations.activityKind,
+      targetExternalId: schema.invocations.targetExternalId,
+      sessionId: schema.invocations.sessionId,
+      status: schema.invocations.status,
+      errorDetail: schema.invocations.errorDetail,
+      userPrompt: schema.invocations.userPrompt,
+    })
+    .from(schema.invocations)
+    .where(and(...filters))
+    .orderBy(desc(schema.invocations.createdAt))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    ts: r.createdAt,
+    actor: r.sessionId ? ("agent" as const) : ("user" as const),
+    kind: r.activityKind ?? r.operation,
+    operation: r.operation,
+    status: r.status,
+    targetExternalId: r.targetExternalId,
+    sessionId: r.sessionId,
+    description: describeActivity({
+      kind: r.activityKind,
+      operation: r.operation,
+      target: r.targetExternalId,
+      userPrompt: r.userPrompt,
+    }),
+    errorDetail: r.errorDetail,
+  }));
+}
+
+function describeActivity(args: {
+  kind: string | null;
+  operation: string;
+  target: string | null;
+  userPrompt: string;
+}): string {
+  const target = args.target ? ` ${args.target}` : "";
+  switch (args.kind) {
+    case "draft_proposed":
+      return `Draft proposed${target}`;
+    case "draft_approved":
+      return `Draft approved → document ingested${target}`;
+    case "draft_rejected":
+      return `Draft rejected${target}`;
+    case "draft_archived":
+      return `Draft archived${target}`;
+    case "document_ingested":
+      return `Document ingested${target}`;
+    case "document_archived":
+      return `Document archived${target}`;
+    case "document_linked":
+      return `Document link created${target}`;
+    case "ticket_progress_set":
+      return `Ticket progress updated${target}`;
+    case "canon_project_edited":
+      return `Project canon edited`;
+    case "canon_domain_edited":
+      return `Canon domain edited${target}`;
+    case "canon_domain_created":
+      return `Canon domain created${target}`;
+    case "project_domain_assigned":
+      return `Project assigned to domain${target}`;
+    case "project_created":
+      return `Project created${target}`;
+    case "project_repo_updated":
+      return `Project repo metadata updated`;
+    default:
+      return args.operation + (target ? ` (${target.trim()})` : "");
+  }
 }
 
 export async function getDistinctOperations(userId: string): Promise<string[]> {

@@ -218,6 +218,19 @@ export const invocations = pgTable(
     userId: uuid("user_id").references(() => users.id),
     projectId: uuid("project_id").references(() => projects.id),
     operation: text("operation").notNull(),
+    // Stable, semantic kind of activity for the feed (e.g.
+    // 'draft_proposed', 'draft_approved', 'document_archived'). Distinct
+    // from `operation` which is the raw tool name (some tools produce many
+    // kinds, e.g. compose_context only has one). NULL for legacy rows.
+    activityKind: text("activity_kind"),
+    // Primary external entity this row affected (e.g. 'ACME-1042' for a
+    // draft about that ticket). Lets the activity feed group by entity
+    // and supports drill-downs without re-parsing payloads.
+    targetExternalId: text("target_external_id"),
+    // Streamable-HTTP MCP session that produced this row (or a synthetic
+    // ID for web-originated mutations). Lets users filter the audit and
+    // activity feed to a single chat / browsing session.
+    sessionId: text("session_id"),
     userPrompt: text("user_prompt").notNull(),
     systemPrompt: text("system_prompt").notNull().default(""),
     retrievedChunks: jsonb("retrieved_chunks").notNull().default([]),
@@ -235,6 +248,12 @@ export const invocations = pgTable(
   (t) => [
     index("invocations_project_idx").on(t.projectId),
     index("invocations_created_at_idx").on(t.createdAt),
+    index("invocations_session_idx").on(t.sessionId),
+    index("invocations_project_kind_created_idx").on(
+      t.projectId,
+      t.activityKind,
+      t.createdAt,
+    ),
   ],
 );
 

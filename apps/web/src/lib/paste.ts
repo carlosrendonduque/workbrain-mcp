@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
+import { type InvocationMeta, recordInvocation } from "./audit";
 import { ClassifierError, type ClassifierUsage, classify } from "./classifier";
 import { buildDocumentPath, writeDocument } from "./corpus";
 import { db } from "./db";
@@ -236,45 +237,10 @@ async function resolveProject(userId: string, projectSlug: string): Promise<Reso
   return row;
 }
 
-interface AuditArgs {
-  userId: string;
-  projectId: string;
-  status: "success" | "error";
-  userPrompt: string;
-  retrievedChunks: unknown;
-  errorDetail?: string;
-  latencyMs: number;
-  classifierUsage?: ClassifierUsage;
-  classifierCost?: string;
-  classifierResponse?: string;
-}
-
-async function recordAudit(args: AuditArgs): Promise<void> {
-  try {
-    await db.insert(schema.invocations).values({
-      userId: args.userId,
-      projectId: args.projectId,
-      operation: "ingest_paste",
-      userPrompt: args.userPrompt,
-      retrievedChunks: args.retrievedChunks,
-      status: args.status,
-      errorDetail: args.errorDetail,
-      latencyMs: args.latencyMs,
-      provider: args.classifierUsage ? "anthropic" : "none",
-      model: args.classifierUsage ? "claude-sonnet-4-6" : "none",
-      promptTokens: args.classifierUsage?.inputTokens ?? null,
-      completionTokens: args.classifierUsage?.outputTokens ?? null,
-      costUsd: args.classifierCost ?? null,
-      responseText: args.classifierResponse ?? null,
-    });
-  } catch (err) {
-    console.error("audit insert failed:", err);
-  }
-}
-
 export async function ingestPaste(
   userId: string,
   input: IngestPasteInput,
+  meta: InvocationMeta = {},
 ): Promise<IngestPasteResult> {
   const start = Date.now();
 
@@ -439,16 +405,23 @@ export async function ingestPaste(
       );
     }
 
-    await recordAudit({
+    await recordInvocation({
       userId,
       projectId: projectInfo.projectId,
+      operation: "ingest_paste",
+      activityKind: "document_ingested",
+      targetExternalId: finalExternalId ?? null,
+      sessionId: meta.sessionId,
       status: "success",
       userPrompt: `ingest_paste type=${finalType} title="${input.title}" classified=${classifierUsage !== undefined}`,
       retrievedChunks: [],
       latencyMs: Date.now() - start,
-      classifierUsage,
-      classifierCost,
-      classifierResponse,
+      provider: classifierUsage ? "anthropic" : "none",
+      model: classifierUsage ? "claude-sonnet-4-6" : "none",
+      promptTokens: classifierUsage?.inputTokens ?? null,
+      completionTokens: classifierUsage?.outputTokens ?? null,
+      costUsd: classifierCost ?? null,
+      responseText: classifierResponse ?? null,
     });
 
     return {
@@ -467,17 +440,23 @@ export async function ingestPaste(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (projectInfo) {
-      await recordAudit({
+      await recordInvocation({
         userId,
         projectId: projectInfo.projectId,
+        operation: "ingest_paste",
+        activityKind: "document_ingested",
+        sessionId: meta.sessionId,
         status: "error",
         userPrompt: `ingest_paste type=${input.type ?? "(auto)"} title="${input.title}"`,
         retrievedChunks: [],
         errorDetail: message,
         latencyMs: Date.now() - start,
-        classifierUsage,
-        classifierCost,
-        classifierResponse,
+        provider: classifierUsage ? "anthropic" : "none",
+        model: classifierUsage ? "claude-sonnet-4-6" : "none",
+        promptTokens: classifierUsage?.inputTokens ?? null,
+        completionTokens: classifierUsage?.outputTokens ?? null,
+        costUsd: classifierCost ?? null,
+        responseText: classifierResponse ?? null,
       });
     }
     throw err;

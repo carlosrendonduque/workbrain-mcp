@@ -1,6 +1,7 @@
 import { and, cosineDistance, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
+import { type InvocationMeta, recordInvocation } from "./audit";
 import { ARCHIVED_STATUS } from "./curation";
 import { db } from "./db";
 import { type RerankUsage, embed, rerank } from "./embeddings";
@@ -95,40 +96,11 @@ async function resolveProject(userId: string, projectSlug: string): Promise<Reso
   return row;
 }
 
-interface AuditArgs {
-  userId: string;
-  projectId: string;
-  query: string;
-  status: "success" | "error";
-  retrievedChunks: unknown;
-  errorDetail?: string;
-  latencyMs: number;
-  rerankUsage?: RerankUsage;
-  rerankCost?: string;
-}
-
-async function recordAudit(args: AuditArgs): Promise<void> {
-  try {
-    await db.insert(schema.invocations).values({
-      userId: args.userId,
-      projectId: args.projectId,
-      operation: "search",
-      userPrompt: args.query,
-      retrievedChunks: args.retrievedChunks,
-      status: args.status,
-      errorDetail: args.errorDetail,
-      latencyMs: args.latencyMs,
-      provider: args.rerankUsage ? "voyage" : "none",
-      model: args.rerankUsage ? "rerank-2" : "none",
-      promptTokens: args.rerankUsage?.totalTokens ?? null,
-      costUsd: args.rerankCost ?? null,
-    });
-  } catch (err) {
-    console.error("audit insert failed:", err);
-  }
-}
-
-export async function search(userId: string, input: SearchInput): Promise<SearchResult> {
+export async function search(
+  userId: string,
+  input: SearchInput,
+  meta: InvocationMeta = {},
+): Promise<SearchResult> {
   const start = Date.now();
   const project = await resolveProject(userId, input.projectSlug);
 
@@ -229,11 +201,14 @@ export async function search(userId: string, input: SearchInput): Promise<Search
       chunks = candidates.slice(0, topK);
     }
 
-    await recordAudit({
+    await recordInvocation({
       userId,
       projectId: project.projectId,
-      query: input.query,
+      operation: "search",
+      sessionId: meta.sessionId,
+      targetExternalId: input.externalId ?? null,
       status: "success",
+      userPrompt: input.query,
       retrievedChunks: chunks.map((c) => ({
         documentId: c.documentId,
         documentPath: c.documentPath,
@@ -241,8 +216,10 @@ export async function search(userId: string, input: SearchInput): Promise<Search
         rerankScore: c.rerankScore,
       })),
       latencyMs: Date.now() - start,
-      rerankUsage,
-      rerankCost,
+      provider: rerankUsage ? "voyage" : "none",
+      model: rerankUsage ? "rerank-2" : "none",
+      promptTokens: rerankUsage?.totalTokens ?? null,
+      costUsd: rerankCost ?? null,
     });
 
     return {
@@ -252,16 +229,21 @@ export async function search(userId: string, input: SearchInput): Promise<Search
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await recordAudit({
+    await recordInvocation({
       userId,
       projectId: project.projectId,
-      query: input.query,
+      operation: "search",
+      sessionId: meta.sessionId,
+      targetExternalId: input.externalId ?? null,
       status: "error",
+      userPrompt: input.query,
       retrievedChunks: [],
       errorDetail: message,
       latencyMs: Date.now() - start,
-      rerankUsage,
-      rerankCost,
+      provider: rerankUsage ? "voyage" : "none",
+      model: rerankUsage ? "rerank-2" : "none",
+      promptTokens: rerankUsage?.totalTokens ?? null,
+      costUsd: rerankCost ?? null,
     });
     throw err;
   }

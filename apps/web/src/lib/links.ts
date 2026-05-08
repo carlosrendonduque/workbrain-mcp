@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
+import { type InvocationMeta, recordInvocation } from "./audit";
 import { db } from "./db";
 
 export const LINK_TYPES = [
@@ -102,7 +103,9 @@ async function resolveDocument(
 export async function linkDocuments(
   userId: string,
   input: LinkDocumentsInput,
+  meta: InvocationMeta = {},
 ): Promise<LinkResult> {
+  const start = Date.now();
   const from = await resolveDocument(
     userId,
     input.projectSlug,
@@ -147,6 +150,18 @@ export async function linkDocuments(
 
   const existingRow = existing[0];
   if (existingRow) {
+    await recordInvocation({
+      userId,
+      projectId: from.projectId,
+      operation: "link_documents",
+      activityKind: "document_linked",
+      targetExternalId: input.fromExternalId ?? input.toExternalId ?? null,
+      sessionId: meta.sessionId,
+      status: "success",
+      userPrompt: `link_documents ${input.linkType} (already existed)`,
+      latencyMs: Date.now() - start,
+      responseText: existingRow.id,
+    });
     return {
       linkId: existingRow.id,
       fromDocumentId: from.id,
@@ -171,6 +186,19 @@ export async function linkDocuments(
   if (!insertedRow) {
     throw new LinkError("insert_failed", "Failed to insert document link.", 500);
   }
+
+  await recordInvocation({
+    userId,
+    projectId: from.projectId,
+    operation: "link_documents",
+    activityKind: "document_linked",
+    targetExternalId: input.fromExternalId ?? input.toExternalId ?? null,
+    sessionId: meta.sessionId,
+    status: "success",
+    userPrompt: `link_documents ${input.linkType} from=${input.fromExternalId ?? input.fromPath} to=${input.toExternalId ?? input.toPath}`,
+    latencyMs: Date.now() - start,
+    responseText: insertedRow.id,
+  });
 
   return {
     linkId: insertedRow.id,
