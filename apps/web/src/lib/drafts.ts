@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db";
 import { type IngestPasteResult, ingestPaste } from "./paste";
@@ -142,6 +142,8 @@ export async function proposeDocument(
 export interface ListDraftsOpts {
   projectSlug?: string;
   status?: (typeof DRAFT_STATUS)[number];
+  type?: string;
+  query?: string;
   limit?: number;
 }
 
@@ -151,6 +153,16 @@ export async function listDrafts(userId: string, opts: ListDraftsOpts = {}): Pro
   const filters = [eq(schema.clients.userId, userId)];
   if (opts.projectSlug) filters.push(eq(schema.projects.slug, opts.projectSlug));
   if (opts.status) filters.push(eq(schema.draftDocuments.status, opts.status));
+  if (opts.type) filters.push(eq(schema.draftDocuments.proposedType, opts.type));
+  if (opts.query) {
+    const pattern = `%${opts.query}%`;
+    const queryFilter = or(
+      ilike(schema.draftDocuments.proposedTitle, pattern),
+      ilike(schema.draftDocuments.proposedExternalId, pattern),
+      ilike(schema.draftDocuments.proposedContent, pattern),
+    );
+    if (queryFilter) filters.push(queryFilter);
+  }
 
   const rows = await db
     .select({
@@ -189,6 +201,39 @@ export async function listDrafts(userId: string, opts: ListDraftsOpts = {}): Pro
 function normalizeStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is string => typeof x === "string");
+}
+
+export interface DraftTypeCount {
+  type: string;
+  count: number;
+}
+
+export interface DraftTypeCountsOpts {
+  projectSlug?: string;
+  status?: (typeof DRAFT_STATUS)[number];
+}
+
+export async function getDraftTypeCounts(
+  userId: string,
+  opts: DraftTypeCountsOpts = {},
+): Promise<DraftTypeCount[]> {
+  const filters = [eq(schema.clients.userId, userId)];
+  if (opts.projectSlug) filters.push(eq(schema.projects.slug, opts.projectSlug));
+  if (opts.status) filters.push(eq(schema.draftDocuments.status, opts.status));
+
+  const rows = await db
+    .select({
+      type: schema.draftDocuments.proposedType,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(schema.draftDocuments)
+    .innerJoin(schema.projects, eq(schema.projects.id, schema.draftDocuments.projectId))
+    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
+    .where(and(...filters))
+    .groupBy(schema.draftDocuments.proposedType)
+    .orderBy(desc(sql`count(*)`));
+
+  return rows.map((r) => ({ type: r.type, count: r.count }));
 }
 
 export async function countPendingDraftsForUser(userId: string): Promise<number> {
