@@ -1,6 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "./db";
 
+export interface DocumentProgress {
+  analysis: string | null;
+  design: string | null;
+  build: string | null;
+  tests: string | null;
+  deployment: string | null;
+}
+
 export interface DocumentDetail {
   documentId: string;
   type: string;
@@ -10,6 +18,7 @@ export interface DocumentDetail {
   status: string | null;
   content: string;
   frontmatter: Record<string, unknown>;
+  progress: DocumentProgress;
   createdAt: Date | string;
   updatedAt: Date | string;
   projectId: string;
@@ -33,6 +42,26 @@ export interface DocumentLink {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const PROGRESS_STAGES = ["analysis", "design", "build", "tests", "deployment"] as const;
+
+function normalizeProgress(raw: unknown): DocumentProgress {
+  const empty: DocumentProgress = {
+    analysis: null,
+    design: null,
+    build: null,
+    tests: null,
+    deployment: null,
+  };
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return empty;
+  const obj = raw as Record<string, unknown>;
+  const out = { ...empty };
+  for (const stage of PROGRESS_STAGES) {
+    const v = obj[stage];
+    if (typeof v === "string" && v.trim().length > 0) out[stage] = v;
+  }
+  return out;
+}
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -59,6 +88,7 @@ export async function getDocumentDetail(
       status: schema.documents.status,
       content: schema.documents.content,
       frontmatter: schema.documents.frontmatter,
+      progress: schema.documents.progress,
       createdAt: schema.documents.createdAt,
       updatedAt: schema.documents.updatedAt,
       projectId: schema.projects.id,
@@ -87,6 +117,7 @@ export async function getDocumentDetail(
   return {
     ...row,
     frontmatter: isObjectRecord(row.frontmatter) ? row.frontmatter : {},
+    progress: normalizeProgress(row.progress),
   };
 }
 

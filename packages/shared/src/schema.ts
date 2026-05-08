@@ -129,6 +129,10 @@ export const documents = pgTable(
     content: text("content").notNull(),
     frontmatter: jsonb("frontmatter").notNull().default({}),
     status: text("status"),
+    // 5-stage ticket progress (only meaningful when type='ticket'). Each
+    // stage is a free-form text field; emptiness signals "not done yet".
+    // The status line phase = the next empty stage.
+    progress: jsonb("progress").notNull().default({}),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

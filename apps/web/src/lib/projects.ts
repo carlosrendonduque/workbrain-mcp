@@ -320,6 +320,9 @@ export interface DocumentRow {
   contentSnippet: string;
   outgoingLinkCount: number;
   incomingLinkCount: number;
+  // Compact pattern of the 5-stage progress (e.g. "_·D·_·_·_"). Empty
+  // string when not a ticket or all stages empty.
+  progressPattern: string;
 }
 
 export interface TypeCount {
@@ -424,6 +427,7 @@ export async function listDocumentsForProject(
       status: schema.documents.status,
       createdAt: schema.documents.createdAt,
       contentSnippet: sql<string>`left(${schema.documents.content}, 200)`,
+      progress: schema.documents.progress,
     })
     .from(schema.documents)
     .where(and(...filters))
@@ -456,9 +460,26 @@ export async function listDocumentsForProject(
   const outMap = new Map(outgoing.map((r) => [r.docId, r.n]));
   const inMap = new Map(incoming.map((r) => [r.docId, r.n]));
 
-  return rows.map((r) => ({
-    ...r,
-    outgoingLinkCount: outMap.get(r.documentId) ?? 0,
-    incomingLinkCount: inMap.get(r.documentId) ?? 0,
-  }));
+  return rows.map((r) => {
+    const { progress: rawProgress, ...rest } = r;
+    return {
+      ...rest,
+      outgoingLinkCount: outMap.get(r.documentId) ?? 0,
+      incomingLinkCount: inMap.get(r.documentId) ?? 0,
+      progressPattern: r.type === "ticket" ? buildProgressPattern(rawProgress) : "",
+    };
+  });
+}
+
+const PROGRESS_STAGE_KEYS = ["analysis", "design", "build", "tests", "deployment"] as const;
+
+function buildProgressPattern(raw: unknown): string {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return PROGRESS_STAGE_KEYS.map(() => "_").join("·");
+  }
+  const obj = raw as Record<string, unknown>;
+  return PROGRESS_STAGE_KEYS.map((s) => {
+    const v = obj[s];
+    return typeof v === "string" && v.trim().length > 0 ? s.charAt(0).toUpperCase() : "_";
+  }).join("·");
 }
