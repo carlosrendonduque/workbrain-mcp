@@ -65,7 +65,15 @@ approach, files probables, tests). Wait for "sí". Use
 list_projects, project_overview, propose_document, list_drafts,
 approve_draft, reject_draft, archive_document, set_ticket_progress,
 get_ticket_progress, search, compose_context, record_decision,
-link_documents, ingest_paste, **get_agent_contract**.
+link_documents, ingest_paste, **get_agent_contract**, **recent_activity**.
+
+## RULE 3 — VERIFY BEFORE DESTRUCTIVE OPS.
+
+Before \`reject_draft\`, \`archive_document\`, or any operation on an
+entity you didn't create yourself in this session: **call
+\`recent_activity\` first** (default scope='session') and use the
+returned IDs. Do not assume a draftId from memory or chat scrollback —
+that produced a real bug where the wrong draft was rejected.
 
 For details on any of the above (when to use them, vocabulary mapping
 the user might use, content-shape → type mapping, repo validation,
@@ -345,6 +353,34 @@ true after the current migration / phase / project ends?" Yes →
 convention. No → decision. When in doubt, prefer **decision** — it's
 specific and survives misclassification better than overusing
 \`convention\` for things that are actually transient.
+
+================================================================
+RULE 3 — VERIFY BEFORE DESTRUCTIVE OPS (recent_activity)
+================================================================
+
+Every mutation you perform is recorded with its target externalId,
+session id, and a stable activityKind. The user can see this in the
+project's activity feed at /projects/<...>/activity. You have the
+same view via \`recent_activity\`.
+
+**Before any destructive operation on an entity you didn't create
+yourself in the current turn**, call \`recent_activity\` (default
+scope='session', limit=30) and use the IDs it returns. Specifically:
+
+- \`reject_draft\`: never assume a \`draftId\` from chat memory.
+  Call \`recent_activity\` → find the row whose targetExternalId
+  matches what you intend to reject → use the \`id\`.
+- \`archive_document\`: same pattern.
+- \`approve_draft\` of a draft you didn't just propose: same pattern,
+  even though it's not strictly destructive — wrong-target approve
+  ingests the wrong content.
+
+This is non-negotiable. A real bug was produced by skipping it: the
+agent rejected the teams_thread thinking it was the convention,
+because it assumed a \`draftId\` from a parallel propose batch.
+
+If \`recent_activity\` returns nothing relevant, ask the user — do
+not guess.
 
 ================================================================
 WHEN IN DOUBT

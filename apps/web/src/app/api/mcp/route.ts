@@ -27,6 +27,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  // Streamable HTTP MCP clients send `mcp-session-id` on every request after
+  // the initial handshake. Captured into the audit/activity log so users can
+  // scope feeds to a single chat. NULL is fine for clients that don't issue
+  // one (e.g. curl probes during dev).
+  const sessionId = h.get("mcp-session-id");
+
   let body: unknown;
   try {
     body = await request.json();
@@ -39,13 +45,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (body.length === 0) {
       return bareError(JSONRPC_INVALID_REQUEST, "Empty batch.");
     }
-    const responses = await Promise.all(body.map((item) => handleJsonRpcRequest(userId, item)));
+    const responses = await Promise.all(
+      body.map((item) => handleJsonRpcRequest(userId, item, { sessionId })),
+    );
     const filtered = responses.filter((r) => r !== null);
     if (filtered.length === 0) return new NextResponse(null, { status: 204 });
     return NextResponse.json(filtered);
   }
 
-  const response = await handleJsonRpcRequest(userId, body);
+  const response = await handleJsonRpcRequest(userId, body, { sessionId });
   if (response === null) {
     // Notification — no response per JSON-RPC spec.
     return new NextResponse(null, { status: 204 });

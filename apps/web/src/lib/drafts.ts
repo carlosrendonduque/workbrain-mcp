@@ -1,5 +1,6 @@
 import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { type InvocationMeta, recordInvocation } from "./audit";
 import { db, schema } from "./db";
 import { type IngestPasteResult, ingestPaste } from "./paste";
 
@@ -108,7 +109,9 @@ export interface CreatedDraft {
 export async function proposeDocument(
   userId: string,
   input: ProposeDocumentInput,
+  meta: InvocationMeta = {},
 ): Promise<CreatedDraft> {
+  const start = Date.now();
   const project = await resolveProject(userId, input.projectSlug);
 
   const cleanedRelations = (input.relatedExternalIds ?? [])
@@ -136,6 +139,20 @@ export async function proposeDocument(
   if (!row) {
     throw new DraftError("insert_failed", "Failed to insert draft.", 500);
   }
+
+  await recordInvocation({
+    userId,
+    projectId: project.projectId,
+    operation: "propose_document",
+    activityKind: "draft_proposed",
+    targetExternalId: input.externalId ?? null,
+    sessionId: meta.sessionId,
+    status: "success",
+    userPrompt: `propose_document type=${input.type} title="${input.title}" related=${cleanedRelations.length}`,
+    latencyMs: Date.now() - start,
+    responseText: row.id,
+  });
+
   return { draftId: row.id, projectSlug: project.projectSlug };
 }
 
@@ -314,7 +331,9 @@ export async function approveDraft(
   userId: string,
   draftId: string,
   edits: ApproveDraftEdits = {},
+  meta: InvocationMeta = {},
 ): Promise<ApproveDraftResult> {
+  const start = Date.now();
   const draft = await ownedDraft(userId, draftId);
   if (draft.status !== "pending") {
     throw new DraftError(
@@ -332,13 +351,17 @@ export async function approveDraft(
       ? undefined
       : (edits.externalId ?? draft.proposedExternalId ?? undefined);
 
-  const ingested = await ingestPaste(userId, {
-    projectSlug: draft.projectSlug,
-    type: finalType,
-    title: finalTitle,
-    content: finalContent,
-    externalId: finalExternalId,
-  });
+  const ingested = await ingestPaste(
+    userId,
+    {
+      projectSlug: draft.projectSlug,
+      type: finalType,
+      title: finalTitle,
+      content: finalContent,
+      externalId: finalExternalId,
+    },
+    meta,
+  );
 
   await db
     .update(schema.draftDocuments)
@@ -364,6 +387,19 @@ export async function approveDraft(
     ingested.documentId,
     normalizeStringArray(draft.relatedExternalIds),
   );
+
+  await recordInvocation({
+    userId,
+    projectId: draft.projectId,
+    operation: "approve_draft",
+    activityKind: "draft_approved",
+    targetExternalId: finalExternalId ?? null,
+    sessionId: meta.sessionId,
+    status: "success",
+    userPrompt: `approve_draft ${draftId} type=${finalType} title="${finalTitle}"`,
+    latencyMs: Date.now() - start,
+    responseText: ingested.documentId,
+  });
 
   return { draftId, ingested };
 }
@@ -428,7 +464,12 @@ async function materializeRelations(
   }
 }
 
-export async function rejectDraft(userId: string, draftId: string): Promise<void> {
+export async function rejectDraft(
+  userId: string,
+  draftId: string,
+  meta: InvocationMeta = {},
+): Promise<void> {
+  const start = Date.now();
   const draft = await ownedDraft(userId, draftId);
   if (draft.status !== "pending") {
     throw new DraftError(
@@ -441,6 +482,18 @@ export async function rejectDraft(userId: string, draftId: string): Promise<void
     .update(schema.draftDocuments)
     .set({ status: "rejected", reviewedAt: sql`now()` })
     .where(eq(schema.draftDocuments.id, draftId));
+
+  await recordInvocation({
+    userId,
+    projectId: draft.projectId,
+    operation: "reject_draft",
+    activityKind: "draft_rejected",
+    targetExternalId: draft.proposedExternalId ?? null,
+    sessionId: meta.sessionId,
+    status: "success",
+    userPrompt: `reject_draft ${draftId} type=${draft.proposedType} title="${draft.proposedTitle}"`,
+    latencyMs: Date.now() - start,
+  });
 }
 
 export interface EditDraftInput {

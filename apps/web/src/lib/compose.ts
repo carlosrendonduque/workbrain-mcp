@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
+import { type InvocationMeta, recordInvocation } from "./audit";
 import { db } from "./db";
 import { type SearchChunk, search } from "./search";
 import { getCanonDomainById, mergeCanon } from "./canon-domains";
@@ -253,36 +254,10 @@ async function loadStakeholders(projectId: string): Promise<StakeholderInScope[]
   return rows;
 }
 
-interface AuditArgs {
-  userId: string;
-  projectId: string;
-  status: "success" | "error";
-  userPrompt: string;
-  retrievedChunks: unknown;
-  errorDetail?: string;
-  latencyMs: number;
-}
-
-async function recordAudit(args: AuditArgs): Promise<void> {
-  try {
-    await db.insert(schema.invocations).values({
-      userId: args.userId,
-      projectId: args.projectId,
-      operation: "compose_context",
-      userPrompt: args.userPrompt,
-      retrievedChunks: args.retrievedChunks,
-      status: args.status,
-      errorDetail: args.errorDetail,
-      latencyMs: args.latencyMs,
-    });
-  } catch (err) {
-    console.error("compose_context audit insert failed:", err);
-  }
-}
-
 export async function composeContext(
   userId: string,
   input: ComposeContextInput,
+  meta: InvocationMeta = {},
 ): Promise<ComposeContextResult> {
   const start = Date.now();
   const project = await resolveProject(userId, input.projectSlug);
@@ -389,9 +364,12 @@ export async function composeContext(
       },
     };
 
-    await recordAudit({
+    await recordInvocation({
       userId,
       projectId: project.projectId,
+      operation: "compose_context",
+      sessionId: meta.sessionId,
+      targetExternalId: input.focusExternalId ?? null,
       status: "success",
       userPrompt: focusReason,
       retrievedChunks: {
@@ -405,9 +383,12 @@ export async function composeContext(
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await recordAudit({
+    await recordInvocation({
       userId,
       projectId: project.projectId,
+      operation: "compose_context",
+      sessionId: meta.sessionId,
+      targetExternalId: input.focusExternalId ?? null,
       status: "error",
       userPrompt: focusReason || "(no focus resolved)",
       retrievedChunks: {},
