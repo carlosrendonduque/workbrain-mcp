@@ -34,6 +34,9 @@ export async function createProjectAction(
     };
   }
 
+  const repoUrl = readField(formData, "repoUrl");
+  const defaultBranch = readField(formData, "defaultBranch");
+
   try {
     let result: Awaited<ReturnType<typeof createProject>>;
     if (mode === "new-client") {
@@ -52,6 +55,8 @@ export async function createProjectAction(
         projectSlug,
         projectName,
         persist,
+        repoUrl,
+        defaultBranch,
       });
     } else {
       const existingClientId = readField(formData, "existingClientId");
@@ -67,6 +72,8 @@ export async function createProjectAction(
         projectSlug,
         projectName,
         persist,
+        repoUrl,
+        defaultBranch,
       });
     }
 

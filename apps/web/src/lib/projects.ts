@@ -7,6 +7,8 @@ export interface ProjectOverview {
   clientSlug: string;
   clientName: string;
   persist: boolean;
+  repoUrl: string | null;
+  defaultBranch: string | null;
   canon: {
     conventions: boolean;
     guidelines: boolean;
@@ -38,6 +40,8 @@ export async function getProjectOverview(
       conventions: schema.projects.conventions,
       guidelines: schema.projects.guidelines,
       architecture: schema.projects.architecture,
+      repoUrl: schema.projects.repoUrl,
+      defaultBranch: schema.projects.defaultBranch,
       clientSlug: schema.clients.slug,
       clientName: schema.clients.name,
     })
@@ -106,6 +110,8 @@ export async function getProjectOverview(
     clientSlug: project.clientSlug,
     clientName: project.clientName,
     persist: project.persist,
+    repoUrl: project.repoUrl,
+    defaultBranch: project.defaultBranch,
     canon: {
       conventions: Boolean(project.conventions && project.conventions.trim().length > 0),
       guidelines: Boolean(project.guidelines && project.guidelines.trim().length > 0),
@@ -173,6 +179,10 @@ export interface CreateProjectInput {
   projectSlug: string;
   projectName: string;
   persist: boolean;
+  // Optional VCS metadata. When set, the agent uses repoUrl to validate or
+  // suggest clone, and defaultBranch as the base for feature branches.
+  repoUrl?: string;
+  defaultBranch?: string;
 }
 
 export interface CreatedProject {
@@ -275,6 +285,8 @@ export async function createProject(
     slug: input.projectSlug,
     name: input.projectName.trim(),
     persist: input.persist,
+    repoUrl: input.repoUrl?.trim() || null,
+    defaultBranch: input.defaultBranch?.trim() || null,
   });
 
   return { clientSlug, projectSlug: input.projectSlug };
@@ -291,6 +303,8 @@ export interface ProjectDetail {
   conventions: string | null;
   guidelines: string | null;
   architecture: string | null;
+  repoUrl: string | null;
+  defaultBranch: string | null;
   documentCount: number;
   chunkCount: number;
 }
@@ -330,6 +344,8 @@ export async function getProjectByPath(
       conventions: schema.projects.conventions,
       guidelines: schema.projects.guidelines,
       architecture: schema.projects.architecture,
+      repoUrl: schema.projects.repoUrl,
+      defaultBranch: schema.projects.defaultBranch,
     })
     .from(schema.projects)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))

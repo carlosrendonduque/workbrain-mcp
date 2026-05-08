@@ -179,6 +179,48 @@ export function CreateProjectForm({ clients }: { clients: ClientRow[] }) {
         </label>
       </fieldset>
 
+      <fieldset className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
+        <legend className="px-2 text-sm font-medium text-zinc-200">
+          Source repo (optional)
+        </legend>
+        <p className="mb-3 text-xs text-zinc-500">
+          If this project lives in a git repo, link it here. The agent uses it to
+          validate you're in the right folder, suggest clone, and offer feature-branch
+          creation. Leave empty for projects without a public repo or with custom
+          version-control systems.
+        </p>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_180px]">
+          <div>
+            <label
+              htmlFor="repoUrl"
+              className="block text-xs font-medium uppercase tracking-wide text-zinc-500"
+            >
+              Repo URL
+            </label>
+            <input
+              id="repoUrl"
+              name="repoUrl"
+              placeholder="https://github.com/foo/bar.git or git@dev.azure.com:..."
+              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="defaultBranch"
+              className="block text-xs font-medium uppercase tracking-wide text-zinc-500"
+            >
+              Default branch
+            </label>
+            <input
+              id="defaultBranch"
+              name="defaultBranch"
+              placeholder="main"
+              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-indigo-500"
+            />
+          </div>
+        </div>
+      </fieldset>
+
       <div className="flex items-center justify-end gap-3">
         <SubmitButton />
       </div>
