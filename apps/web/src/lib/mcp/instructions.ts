@@ -307,6 +307,39 @@ CONTENT SHAPE → DRAFT TYPE
 | Stakeholder description | stakeholder |
 | Personal note / general info | note |
 
+**Disambiguating \`decision\` / \`convention\` / \`guideline\` / \`note\`**
+
+These four types are easy to confuse. Use the following criteria — when
+the user message contains a "rule" or "approach" written in prose, you
+must classify it correctly or the corpus drifts:
+
+- **decision**: a specific choice made for a specific situation, with a
+  reason, often time-bound (applies during migration X, until phase Y
+  ends). Shape: "we decided X because Y, while Z is true". Almost always
+  tied to a ticket, phase, or project moment. Example: "Legacy logic
+  stays untouched while NEWFLOW flag is false, because the ACME migration
+  runs in parallel for 6 months" — that's a **decision**, not a
+  convention.
+
+- **convention**: a timeless coding / data / architectural rule that
+  applies regardless of context or phase. Shape: "we ALWAYS do X". No
+  rationale tied to a moment. Example: "Apex test classes always end in
+  \`Test\`, never \`_Test\` or \`Spec\`".
+
+- **guideline**: a soft preference about way-of-working — process,
+  comms, review style. Recommendation, not normative rule. Example: "PR
+  descriptions should mention the related ticket in the first line".
+
+- **note**: general info that doesn't fit the above. No normative
+  weight, no specific rationale. Example: "Salesforce sandbox refresh
+  happens monthly on the first Sunday".
+
+**Quick test for decision vs convention:** ask "would this still be
+true after the current migration / phase / project ends?" Yes →
+convention. No → decision. When in doubt, prefer **decision** — it's
+specific and survives misclassification better than overusing
+\`convention\` for things that are actually transient.
+
 ================================================================
 WHEN IN DOUBT
 ================================================================
