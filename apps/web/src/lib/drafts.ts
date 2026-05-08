@@ -1,4 +1,4 @@
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db";
 import { type IngestPasteResult, ingestPaste } from "./paste";
@@ -39,6 +39,14 @@ export const ProposeDocumentInputSchema = z.object({
   externalId: z.string().min(1).optional(),
   frontmatter: z.record(z.string(), z.unknown()).optional(),
   proposalNote: z.string().min(1).optional(),
+  // External IDs of other documents (real or other drafts) related to this
+  // one. On approve, each becomes a `related` document_links row when the
+  // other side already exists as a real document. Use for co-mention
+  // ('these tickets came from the same conversation'), or for semantic
+  // grouping ('this teams_thread discusses ACME-1017', 'this decision
+  // applies to ACME-1042'). For STRONG semantic relationships
+  // (depends_on, supersedes), use link_documents directly after approval.
+  relatedExternalIds: z.array(z.string().min(1)).optional(),
 });
 
 export type ProposeDocumentInput = z.infer<typeof ProposeDocumentInputSchema>;
@@ -55,6 +63,7 @@ export interface DraftRow {
   proposedExternalId: string | null;
   proposedFrontmatter: unknown;
   proposalNote: string | null;
+  relatedExternalIds: string[];
   status: (typeof DRAFT_STATUS)[number];
   proposedBy: string;
   approvedDocumentId: string | null;
@@ -102,6 +111,11 @@ export async function proposeDocument(
 ): Promise<CreatedDraft> {
   const project = await resolveProject(userId, input.projectSlug);
 
+  const cleanedRelations = (input.relatedExternalIds ?? [])
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .filter((s) => s !== input.externalId);
+
   const inserted = await db
     .insert(schema.draftDocuments)
     .values({
@@ -112,6 +126,7 @@ export async function proposeDocument(
       proposedExternalId: input.externalId ?? null,
       proposedFrontmatter: input.frontmatter ?? {},
       proposalNote: input.proposalNote ?? null,
+      relatedExternalIds: cleanedRelations,
       status: "pending",
       proposedBy: "agent",
     })
@@ -150,6 +165,7 @@ export async function listDrafts(userId: string, opts: ListDraftsOpts = {}): Pro
       proposedExternalId: schema.draftDocuments.proposedExternalId,
       proposedFrontmatter: schema.draftDocuments.proposedFrontmatter,
       proposalNote: schema.draftDocuments.proposalNote,
+      relatedExternalIds: schema.draftDocuments.relatedExternalIds,
       status: schema.draftDocuments.status,
       proposedBy: schema.draftDocuments.proposedBy,
       approvedDocumentId: schema.draftDocuments.approvedDocumentId,
@@ -166,7 +182,13 @@ export async function listDrafts(userId: string, opts: ListDraftsOpts = {}): Pro
   return rows.map((r) => ({
     ...r,
     status: r.status as (typeof DRAFT_STATUS)[number],
+    relatedExternalIds: normalizeStringArray(r.relatedExternalIds),
   }));
+}
+
+function normalizeStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x): x is string => typeof x === "string");
 }
 
 export async function countPendingDraftsForUser(userId: string): Promise<number> {
@@ -212,6 +234,7 @@ async function ownedDraft(userId: string, draftId: string) {
       proposedContent: schema.draftDocuments.proposedContent,
       proposedExternalId: schema.draftDocuments.proposedExternalId,
       proposedFrontmatter: schema.draftDocuments.proposedFrontmatter,
+      relatedExternalIds: schema.draftDocuments.relatedExternalIds,
       status: schema.draftDocuments.status,
     })
     .from(schema.draftDocuments)
@@ -286,7 +309,78 @@ export async function approveDraft(
     })
     .where(eq(schema.draftDocuments.id, draftId));
 
+  // Convert the draft's relatedExternalIds into `related` document_links.
+  // For each related external_id, link only when a real document with that
+  // id exists in the same project — otherwise skip silently. The reverse
+  // link will be created when the OTHER draft is approved (its relations
+  // include this one's id).
+  await materializeRelations(
+    draft.projectId,
+    ingested.documentId,
+    normalizeStringArray(draft.relatedExternalIds),
+  );
+
   return { draftId, ingested };
+}
+
+async function materializeRelations(
+  projectId: string,
+  fromDocumentId: string,
+  relatedExternalIds: string[],
+): Promise<void> {
+  const ids = relatedExternalIds.filter((s) => s.length > 0);
+  if (ids.length === 0) return;
+
+  const matches = await db
+    .select({
+      id: schema.documents.id,
+      externalId: schema.documents.externalId,
+    })
+    .from(schema.documents)
+    .where(
+      and(
+        eq(schema.documents.projectId, projectId),
+        inArray(schema.documents.externalId, ids),
+        ne(schema.documents.id, fromDocumentId),
+      ),
+    );
+
+  if (matches.length === 0) return;
+
+  // Avoid creating duplicate (from,to,related) links if user has approved
+  // both ends already. Read existing forward AND backward edges first.
+  const targetIds = matches.map((m) => m.id);
+  const existing = await db
+    .select({
+      from: schema.documentLinks.fromDocumentId,
+      to: schema.documentLinks.toDocumentId,
+    })
+    .from(schema.documentLinks)
+    .where(
+      and(
+        eq(schema.documentLinks.linkType, "related"),
+        inArray(schema.documentLinks.fromDocumentId, [fromDocumentId, ...targetIds]),
+      ),
+    );
+
+  const existingPairs = new Set<string>();
+  for (const e of existing) {
+    existingPairs.add(`${e.from}|${e.to}`);
+    existingPairs.add(`${e.to}|${e.from}`);
+  }
+
+  const toInsert = matches
+    .filter((m) => !existingPairs.has(`${fromDocumentId}|${m.id}`))
+    .map((m) => ({
+      fromDocumentId,
+      toDocumentId: m.id,
+      linkType: "related",
+      note: "co-captured in same proposal",
+    }));
+
+  if (toInsert.length > 0) {
+    await db.insert(schema.documentLinks).values(toInsert);
+  }
 }
 
 export async function rejectDraft(userId: string, draftId: string): Promise<void> {

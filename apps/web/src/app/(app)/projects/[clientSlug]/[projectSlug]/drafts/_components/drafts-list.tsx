@@ -109,6 +109,20 @@ function DraftCard({
         </div>
       ) : null}
 
+      {draft.relatedExternalIds.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-800/70 px-5 py-2 text-[11px] text-zinc-500">
+          <span className="uppercase tracking-wide">co-captured with:</span>
+          {draft.relatedExternalIds.map((ref) => (
+            <span
+              key={ref}
+              className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+            >
+              {ref}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       <details className="px-5 py-3 text-xs">
         <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">
           show content ({draft.proposedContent.length.toLocaleString()} chars)

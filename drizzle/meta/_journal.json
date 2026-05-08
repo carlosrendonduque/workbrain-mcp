@@ -43,6 +43,13 @@
       "when": 1778199453266,
       "tag": "0005_panoramic_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778202299259,
+      "tag": "0006_round_unus",
+      "breakpoints": true
     }
   ]
 }
