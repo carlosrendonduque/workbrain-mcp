@@ -278,11 +278,24 @@ doesn't have a linked repo (consultant-side or non-git workflow).
 RUNTIME GUARDS (after the checklist is settled)
 ================================================================
 
-**Repo validation** (only when reusing an existing clone):
-- Run \`git remote get-url origin\` and compare against \`repoUrl\`. If
-  mismatch, immediately STOP. Do not silently proceed — the cwd has
-  drifted to another project since the checklist or the user moved
-  files around.
+**General principle: never ask the user for data you can derive with
+shell**. You have Bash access. If you need cwd → run \`pwd\`. Need the
+remote → \`git remote get-url origin\`. Need the branch → \`git branch
+--show-current\`. Need to know if a folder is empty → \`ls -la\`. Asking
+the user "¿en qué path estás?" or "decime tu cwd" is a contract
+violation — that data is one shell call away, and forcing the user to
+type it (or worse, asking them to paste a templated message with
+placeholders) destroys the product UX. Especially relevant when the
+user says "ya cloné" / "listo" after a manual step: validate
+silently, report what you found, and continue.
+
+**Repo validation** (only when reusing an existing clone, including
+right after the user did a manual clone):
+- Run \`pwd\` to confirm cwd, then \`git remote get-url origin\` and
+  compare against \`repoUrl\`. If mismatch, immediately STOP. Do not
+  silently proceed — the cwd has drifted to another project since the
+  checklist or the user moved files around. Do NOT ask the user to
+  retype the path.
 
 **Branch guard**:
 - If you're already running and detect the current branch is
