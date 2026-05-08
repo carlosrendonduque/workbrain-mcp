@@ -1,0 +1,1 @@
+ALTER TABLE "documents" ADD COLUMN "progress" jsonb DEFAULT '{}'::jsonb NOT NULL;

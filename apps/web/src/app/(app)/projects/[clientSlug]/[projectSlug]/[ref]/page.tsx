@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ARCHIVED_STATUS } from "@/lib/curation";
 import { db, schema } from "@/lib/db";
 import { getDocumentDetail, getDocumentLinks, type DocumentLink } from "@/lib/documents";
+import { progressPattern } from "@/lib/ticket-progress";
 import { requireSession } from "@/lib/webapp-auth";
 import { type CandidateDoc, CurationPanel } from "./_components/curation-panel";
 
@@ -170,6 +171,49 @@ export default async function DocumentDetailPage({ params }: PageProps) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="lg:col-span-2 space-y-6">
+          {doc.type === "ticket" ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40">
+              <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">
+                <h2 className="text-sm font-medium text-zinc-200">Progress</h2>
+                <span className="font-mono text-[11px] text-zinc-500">
+                  {progressPattern(doc.progress)}
+                </span>
+              </header>
+              <ul className="divide-y divide-zinc-800/70">
+                {(["analysis", "design", "build", "tests", "deployment"] as const).map(
+                  (stage) => {
+                    const value = doc.progress[stage];
+                    const isOptional = stage === "analysis";
+                    return (
+                      <li key={stage} className="px-4 py-3 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
+                              value
+                                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                                : "border-zinc-700 bg-zinc-900 text-zinc-500"
+                            }`}
+                          >
+                            {stage}
+                          </span>
+                          {isOptional ? (
+                            <span className="text-[10px] uppercase tracking-wide text-zinc-600">
+                              optional
+                            </span>
+                          ) : null}
+                        </div>
+                        {value ? (
+                          <p className="mt-1.5 whitespace-pre-wrap text-zinc-300">{value}</p>
+                        ) : (
+                          <p className="mt-1.5 italic text-zinc-600">empty</p>
+                        )}
+                      </li>
+                    );
+                  },
+                )}
+              </ul>
+            </div>
+          ) : null}
           {frontmatterEntries.length > 0 ? (
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/40">
               <header className="border-b border-zinc-800 px-4 py-2.5">

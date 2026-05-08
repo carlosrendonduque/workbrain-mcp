@@ -235,6 +235,14 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
                     {d.title}
                   </Link>
                   <span className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
+                    {d.progressPattern ? (
+                      <span
+                        title="progress pattern: A·D·B·T·Dep"
+                        className="font-mono text-[10px] text-zinc-500"
+                      >
+                        {d.progressPattern}
+                      </span>
+                    ) : null}
                     {d.outgoingLinkCount > 0 || d.incomingLinkCount > 0 ? (
                       <span title="outgoing → · incoming ←">
                         {d.outgoingLinkCount}→ · ←{d.incomingLinkCount}

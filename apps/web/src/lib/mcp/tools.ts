@@ -35,6 +35,13 @@ import { type LinkDocumentsInput, LinkDocumentsInputSchema, linkDocuments } from
 import { type ProjectOverview, getProjectOverview } from "../projects";
 import { type SearchInput, SearchInputSchema, type SearchResult, search } from "../search";
 import { type ProjectRow, getProjectsForUser } from "../stats";
+import {
+  TICKET_STAGES,
+  type GetTicketProgressResult,
+  type SetTicketProgressResult,
+  getTicketProgress,
+  setTicketProgress,
+} from "../ticket-progress";
 
 export interface ToolDefinition<I, O> {
   name: string;
@@ -155,6 +162,47 @@ const projectOverviewTool: ToolDefinition<z.infer<typeof ProjectOverviewInputSch
   handler: (userId, input) => getProjectOverview(userId, input.projectSlug),
 };
 
+const SetTicketProgressInputSchema = z.object({
+  projectSlug: z.string().min(1),
+  externalId: z.string().min(1),
+  stage: z.enum(TICKET_STAGES),
+  content: z.union([z.string().min(1), z.null()]),
+});
+
+const setTicketProgressTool: ToolDefinition<
+  z.infer<typeof SetTicketProgressInputSchema>,
+  SetTicketProgressResult
+> = {
+  name: "set_ticket_progress",
+  description:
+    "Update one of the 5 progress stages for a ticket: analysis (optional), design, build, tests, deployment. Each stage holds free-form text (the artifact: a short approach, a list of test classes, a PR URL, etc). Pass content=null to clear a stage. ALWAYS confirm with the user in natural language before calling this — show them what will be written and to which stage. Use this proactively as work progresses: after the user articulates the design approach, call with stage='design'; after they mention a PR is open, stage='deployment'; etc. Returns the full updated progress and the next active phase.",
+  schema: SetTicketProgressInputSchema,
+  handler: (userId, input) =>
+    setTicketProgress(userId, {
+      projectSlug: input.projectSlug,
+      externalId: input.externalId,
+      stage: input.stage,
+      content: input.content,
+    }),
+};
+
+const GetTicketProgressInputSchema = z.object({
+  projectSlug: z.string().min(1),
+  externalId: z.string().min(1),
+});
+
+const getTicketProgressTool: ToolDefinition<
+  z.infer<typeof GetTicketProgressInputSchema>,
+  GetTicketProgressResult
+> = {
+  name: "get_ticket_progress",
+  description:
+    "Read the 5-stage progress of a ticket: each stage's content (or null if empty), the active phase (next empty mandatory stage), and a compact pattern like 'A·D·B·_·_'. Use this at the start of a session resuming work on a known ticket — the user should know immediately at which stage we left off.",
+  schema: GetTicketProgressInputSchema,
+  handler: (userId, input) =>
+    getTicketProgress(userId, input.projectSlug, input.externalId),
+};
+
 const searchTool: ToolDefinition<SearchInput, SearchResult> = {
   name: "search",
   description:
@@ -198,6 +246,8 @@ export const TOOLS: ReadonlyArray<ToolDefinition<unknown, unknown>> = [
   approveDraftTool,
   rejectDraftTool,
   archiveDocumentTool,
+  setTicketProgressTool,
+  getTicketProgressTool,
   searchTool,
   composeContextTool,
   recordDecisionTool,
