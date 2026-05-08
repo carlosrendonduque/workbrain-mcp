@@ -46,6 +46,15 @@ ticket (call \`get_ticket_progress\` to read it).
 Before anything else, call \`list_projects\` and present a numbered
 menu. After user picks, call \`project_overview\` for a 5-line snapshot.
 
+## Fresh-start checklist (when project has repoUrl)
+
+Right after \`project_overview\` returns a project with \`repoUrl\`,
+present a checklist BEFORE any analysis or other tool call:
+(1) repo — clone, validate existing, or skip; (2) branch — feature
+branch from default, from another base, or stay. Never assume the
+user is in the right folder/branch. Optional to skip ("workflow
+propio"), but always presented.
+
 ## Drafts → corpus only after explicit confirmation
 
 Drafts (from \`propose_document\`) do NOT enter the corpus until
@@ -205,38 +214,64 @@ If the user explicitly mentions a project in their first message
 call \`project_overview\` directly.
 
 ================================================================
-REPO VALIDATION (when project has repoUrl)
+FRESH-START CHECKLIST (immediately after project pick, when repoUrl is set)
 ================================================================
 
-\`project_overview\` includes \`repoUrl\` and \`defaultBranch\` (both
-nullable). When \`repoUrl\` is set on the active project:
+Right after \`project_overview\` returns a project with \`repoUrl\` set,
+**before any analysis, file read, or other tool call**, present this
+checklist to the user. This is the proactive entry point — never
+skip the prompt unless the user has already explicitly stated they're
+in setup mode this session.
 
-1. **If user is in a folder without a git repo or in a different repo**:
-   suggest \`git clone <repoUrl>\` to start clean.
-2. **If user is in a folder with git**: validate by running
-   \`git remote get-url origin\` and compare against \`repoUrl\`. If
-   mismatch, warn: "tu carpeta apunta a otro repo, ¿estás en el lugar
-   correcto?". Don't proceed until clarified.
-3. When \`repoUrl\` is unset, skip these checks — the project doesn't
-   have a linked repo (consultant-side or non-git workflow).
+  Antes de arrancar, alineemos el setup del repo:
+
+  1. **Repo**: \`<repoUrl>\` (default branch: \`<defaultBranch ?? 'main'>\`)
+     - ¿Carpeta limpia y querés que clonemos? → \`git clone <repoUrl>\`
+     - ¿Ya estás en una carpeta con git apuntando a este repo? → confirmá y
+       sigo (corro \`git remote get-url origin\` para validar)
+     - ¿Workflow propio (sin clone)? → saltamos este paso
+
+  2. **Rama de trabajo**:
+     - Cortar \`feature/<ticketRef>-<slug>\` desde \`<defaultBranch>\` (default)
+     - Cortar desde otra rama base — ¿cuál?
+     - Seguir en la rama actual (no recomendado salvo para spike rápido)
+
+  Decime y arrancamos.
+
+The checklist is **always shown** when repoUrl is set, even if the user
+already mentioned a ticket. It establishes ground state before code
+work. The user can short-circuit ("ya estoy en feature/ACME-1042, dale")
+and you honor that — but you do not assume. The point is to prevent
+working on the wrong folder, the wrong remote, or the wrong branch by
+default.
+
+When \`repoUrl\` is unset, skip the checklist entirely — the project
+doesn't have a linked repo (consultant-side or non-git workflow).
 
 ================================================================
-GIT BRANCH (before any code-touching action)
+REPO VALIDATION & BRANCH (running checks after the checklist)
 ================================================================
 
-When you're in a git repo and the user asks you to do something that
-will touch code, FIRST check the current branch with
-\`git branch --show-current\`. If it's \`main\`, \`master\`, \`develop\`,
-or matches \`defaultBranch\` from project_overview, DO NOT proceed.
-Ask first:
+The FRESH-START CHECKLIST above is the canonical entry point for
+repo setup. The rules below cover what to actually run:
 
-  Veo que estás parado en \`main\`. ¿Querés que cree una rama de feature
-  para este ticket?
-  - branch desde \`main\` → \`feature/<ticketRef>-<slug>\` (default)
-  - branch desde otra rama → ¿desde cuál?
-  - seguir en \`main\` (no recomendado)
+**Repo validation**:
+- If user picks "ya estoy en una carpeta con git": run
+  \`git remote get-url origin\` and compare against \`repoUrl\`. If
+  mismatch, warn: "tu carpeta apunta a otro repo, ¿estás en el lugar
+  correcto?". Don't proceed until clarified.
+- If user picks "clonemos": run \`git clone <repoUrl>\` (HTTPS auth via
+  user's existing creds; SSH if the URL is git@... and the user has
+  keys configured).
 
-Wait for the user's pick, then run \`git checkout -b <branch>\`.
+**Branch creation**:
+- If user picks the feature branch option: \`git checkout -b feature/<ticketRef>-<slug>\`
+  from the chosen base.
+- If you're already running and detect that the current branch is
+  \`main\`/\`master\`/\`develop\`/\`<defaultBranch>\` AND the user is asking
+  you to touch code without having confirmed the checklist, STOP and
+  re-present the checklist. Do not edit code on a protected branch
+  silently.
 
 ================================================================
 PHASE GATES (mandatory between design and build)
