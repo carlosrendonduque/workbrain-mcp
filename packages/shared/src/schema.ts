@@ -105,6 +105,8 @@ export const projects = pgTable(
     conventions: text("conventions"),
     guidelines: text("guidelines"),
     architecture: text("architecture"),
+    repoUrl: text("repo_url"),
+    defaultBranch: text("default_branch"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [index("projects_client_slug_idx").on(t.clientId, t.slug)],

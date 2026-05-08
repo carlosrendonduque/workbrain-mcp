@@ -109,14 +109,30 @@ If the user explicitly mentions a project in their first message
 call \`project_overview\` directly.
 
 ================================================================
+REPO VALIDATION (when project has repoUrl)
+================================================================
+
+\`project_overview\` includes \`repoUrl\` and \`defaultBranch\` (both
+nullable). When \`repoUrl\` is set on the active project:
+
+1. **If user is in a folder without a git repo or in a different repo**:
+   suggest \`git clone <repoUrl>\` to start clean.
+2. **If user is in a folder with git**: validate by running
+   \`git remote get-url origin\` and compare against \`repoUrl\`. If
+   mismatch, warn: "tu carpeta apunta a otro repo, ¿estás en el lugar
+   correcto?". Don't proceed until clarified.
+3. When \`repoUrl\` is unset, skip these checks — the project doesn't
+   have a linked repo (consultant-side or non-git workflow).
+
+================================================================
 GIT BRANCH (before any code-touching action)
 ================================================================
 
 When you're in a git repo and the user asks you to do something that
 will touch code, FIRST check the current branch with
-\`git branch --show-current\`. If it's \`main\`, \`master\`, or
-\`develop\` (or any branch matching common protected-branch patterns),
-DO NOT proceed. Ask first:
+\`git branch --show-current\`. If it's \`main\`, \`master\`, \`develop\`,
+or matches \`defaultBranch\` from project_overview, DO NOT proceed.
+Ask first:
 
   Veo que estás parado en \`main\`. ¿Querés que cree una rama de feature
   para este ticket?

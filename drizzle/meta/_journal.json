@@ -29,6 +29,13 @@
       "when": 1778186597420,
       "tag": "0003_condemned_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778198796754,
+      "tag": "0004_fine_sage",
+      "breakpoints": true
     }
   ]
 }

@@ -95,6 +95,12 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
             {project.clientName} · {NUMBER.format(project.documentCount)} documents ·{" "}
             {NUMBER.format(project.chunkCount)} chunks
           </p>
+          {project.repoUrl ? (
+            <p className="mt-1 font-mono text-[11px] text-zinc-500">
+              repo: {project.repoUrl}
+              {project.defaultBranch ? ` · default: ${project.defaultBranch}` : ""}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
