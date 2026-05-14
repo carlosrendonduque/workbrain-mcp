@@ -13,6 +13,32 @@ Convención: entradas al tope, fechadas. Status: 🌱 fresh · 🌿 maturing
 
 ---
 
+## Vocabulario / naming convention
+
+Cuando se trabaja con WorkBrain en el flujo "meta-dialog" (ver entrada
+del 2026-05-12 más abajo), se usan dos instancias distintas de Claude
+que el usuario referencia por nombre:
+
+- **WorkBrain Meta** — chat de orquestación / construcción de producto.
+  Sostiene meta-contexto: principios, templates de prompt, framework de
+  review, decisiones sobre qué capturar. NUNCA escribe código de ticket.
+  En el repo, es el chat abierto sobre `workbrain/` (este repo).
+- **WorkBrain Task Agent** — chat per-ticket en la IDE del repo target
+  (ORION, ACME, etc). Ejecuta trabajo concreto del ticket: análisis,
+  spike, refactor, auditoría. NUNCA decide dirección de producto. Hay
+  uno distinto por ticket activo.
+
+Forma de uso del usuario al referirse:
+
+- *"El Meta sugiere X"* — refiere al chat de orquestación.
+- *"El Task Agent de RSD-12539 respondió Y"* — refiere al chat per-ticket
+  específico, identificándolo por externalId del ticket en juego.
+
+Cuando la UI two-column del meta-dialog se diseñe (ver entrada abajo),
+el panel izquierdo se etiqueta **Meta** y el panel derecho **Task Agent**.
+
+---
+
 ## 2026-05-12 · Meta-dialog: WorkBrain como orquestador del task agent
 
 🌱 fresh
