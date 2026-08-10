@@ -8,40 +8,43 @@
 
 import { z } from "zod";
 import { type ActivityRow, listActivity } from "../audit";
-import { type ComposeContextResult, ComposeContextInputSchema, composeContext } from "../compose";
+import {
+  ComposeContextInputSchema,
+  type ComposeContextResult,
+  composeContext,
+  GetCanonInputSchema,
+  type GetCanonResult,
+  getCanon,
+} from "../compose";
 import {
   type ArchiveDocumentInput,
-  type ArchiveDocumentResult,
   ArchiveDocumentInputSchema,
+  type ArchiveDocumentResult,
   archiveDocumentByRef,
 } from "../curation";
 import { type RecordDecisionInput, RecordDecisionInputSchema, recordDecision } from "../decisions";
 import {
   type ApproveDraftResult,
+  approveDraft,
   type CreatedDraft,
   type DraftRow,
+  listDrafts,
   type ProposeDocumentInput,
   ProposeDocumentInputSchema,
-  approveDraft,
-  listDrafts,
   proposeDocument,
   rejectDraft,
 } from "../drafts";
-import {
-  type IngestPasteResult,
-  IngestPasteInputSchema,
-  ingestPaste,
-} from "../paste";
 import { type LinkDocumentsInput, LinkDocumentsInputSchema, linkDocuments } from "../links";
-import { type ProjectOverview, getProjectOverview } from "../projects";
+import { IngestPasteInputSchema, type IngestPasteResult, ingestPaste } from "../paste";
+import { getProjectOverview, type ProjectOverview } from "../projects";
 import { type SearchInput, SearchInputSchema, type SearchResult, search } from "../search";
-import { type ProjectRow, getProjectsForUser } from "../stats";
+import { getProjectsForUser, type ProjectRow } from "../stats";
 import {
-  TICKET_STAGES,
   type GetTicketProgressResult,
-  type SetTicketProgressResult,
   getTicketProgress,
+  type SetTicketProgressResult,
   setTicketProgress,
+  TICKET_STAGES,
 } from "../ticket-progress";
 import { FULL_CONTRACT } from "./instructions";
 
@@ -72,8 +75,7 @@ const proposeDocumentTool: ToolDefinition<ProposeDocumentInput, CreatedDraft> = 
   description:
     "MANDATORY FIRST CALL when the user message contains pasted structured content. Call this BEFORE any other tool — before Bash, Read, Grep, search, compose_context, before any analysis or recap. Detect distinct pieces in the input (separate tickets, chat threads, decisions, code blocks, transcribed screenshots) and call once per piece. NOT calling this before doing analysis is a contract violation. CRITICAL — pass `relatedExternalIds` for each piece: when multiple drafts come from the same captured input, each draft's relatedExternalIds must include the externalIds of the OTHER drafts in that batch (soft co-mention). Additionally include the externalIds of any specific tickets a draft is about (a teams_thread discussing ACME-1017 → relatedExternalIds: ['ACME-1017']; a decision for ACME-1042 → relatedExternalIds: ['ACME-1042']). Without this, with 1000 tickets the agent will never recall that these items co-occurred. After capture, acknowledge with `[Drafts queued: N (<short list>)]` and only then continue.",
   schema: ProposeDocumentInputSchema,
-  handler: (userId, input, ctx) =>
-    proposeDocument(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) => proposeDocument(userId, input, { sessionId: ctx.sessionId }),
 };
 
 const ListDraftsInputSchema = z.object({
@@ -112,7 +114,10 @@ const ApproveDraftInputSchema = z.object({
   externalId: z.union([z.string().min(1), z.null()]).optional(),
 });
 
-const approveDraftTool: ToolDefinition<z.infer<typeof ApproveDraftInputSchema>, ApproveDraftResult> = {
+const approveDraftTool: ToolDefinition<
+  z.infer<typeof ApproveDraftInputSchema>,
+  ApproveDraftResult
+> = {
   name: "approve_draft",
   description:
     "Promote a pending draft into the corpus. This calls ingest_paste under the hood with the draft's content (or your edits, if any of type/title/content/externalId are passed in). Auto-links references, audits the action, and links the draft row to the new document. ALWAYS confirm with the user before calling this — show them the exact title/type/externalId that will land. Idempotent on already-approved drafts will fail; re-confirm if status is unclear by calling list_drafts first.",
@@ -131,7 +136,10 @@ const RejectDraftInputSchema = z.object({
   draftId: z.string().uuid(),
 });
 
-const rejectDraftTool: ToolDefinition<z.infer<typeof RejectDraftInputSchema>, { rejected: true; draftId: string }> = {
+const rejectDraftTool: ToolDefinition<
+  z.infer<typeof RejectDraftInputSchema>,
+  { rejected: true; draftId: string }
+> = {
   name: "reject_draft",
   description:
     "Discard a pending draft. The row stays in the database with status='rejected' (audit trail of what was proposed and not kept), but it never enters the corpus. Use when the user says 'no, descartá ese' or similar after reviewing a proposal.",
@@ -165,7 +173,10 @@ const ProjectOverviewInputSchema = z.object({
   projectSlug: z.string().min(1),
 });
 
-const projectOverviewTool: ToolDefinition<z.infer<typeof ProjectOverviewInputSchema>, ProjectOverview | null> = {
+const projectOverviewTool: ToolDefinition<
+  z.infer<typeof ProjectOverviewInputSchema>,
+  ProjectOverview | null
+> = {
   name: "project_overview",
   description:
     "Get a brief snapshot of a project: client + project name, canon flags (which sections have content), doc count by type, stakeholder count, pending drafts count, last 5 documents, last invocation timestamp. Use this RIGHT AFTER the user picks a project (from list_projects menu or by mentioning one) so they get context-on-arrival before starting real work. Keep the response short — 5-8 lines max.",
@@ -210,8 +221,7 @@ const getTicketProgressTool: ToolDefinition<
   description:
     "Read the 5-stage progress of a ticket: each stage's content (or null if empty), the active phase (next empty mandatory stage), and a compact pattern like 'A·D·B·_·_'. Use this at the start of a session resuming work on a known ticket — the user should know immediately at which stage we left off.",
   schema: GetTicketProgressInputSchema,
-  handler: (userId, input) =>
-    getTicketProgress(userId, input.projectSlug, input.externalId),
+  handler: (userId, input) => getTicketProgress(userId, input.projectSlug, input.externalId),
 };
 
 const GetAgentContractInputSchema = z.object({}).optional();
@@ -245,8 +255,7 @@ const linkDocumentsTool: ToolDefinition<LinkDocumentsInput, unknown> = {
   description:
     "Create an explicit relationship between two documents in the same project (e.g. TICKET-9001 supersedes ADR-0042, or TICKET-9001 depends_on TICKET-8870). Idempotent — re-running with the same triple (from, to, linkType) returns the existing link. Cross-project links are forbidden.",
   schema: LinkDocumentsInputSchema,
-  handler: (userId, input, ctx) =>
-    linkDocuments(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) => linkDocuments(userId, input, { sessionId: ctx.sessionId }),
 };
 
 const RecentActivityInputSchema = z.object({
@@ -273,12 +282,7 @@ const recentActivityTool: ToolDefinition<
         .select({ id: schema.projects.id })
         .from(schema.projects)
         .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-        .where(
-          and(
-            eq(schema.clients.userId, userId),
-            eq(schema.projects.slug, input.projectSlug),
-          ),
-        )
+        .where(and(eq(schema.clients.userId, userId), eq(schema.projects.slug, input.projectSlug)))
         .limit(1);
       projectId = projectRows[0]?.id;
     }
@@ -303,10 +307,23 @@ const composeContextTool: ToolDefinition<
   handler: (userId, input, ctx) => composeContext(userId, input, { sessionId: ctx.sessionId }),
 };
 
+// Canon without a ticket. project_overview reports whether canon EXISTS;
+// compose_context returns its content but needs a focus document. At the top of
+// a conversation there is neither, which is exactly when the canon has to be
+// read — hence a tool that returns it on its own.
+const getCanonTool: ToolDefinition<z.infer<typeof GetCanonInputSchema>, GetCanonResult> = {
+  name: "get_canon",
+  description:
+    "Returns the binding canon for a project — conventions, guidelines and architecture (project-level, falling back to the canon domain) — plus stakeholders and the instructions_for_agent preamble. No focus document, no RAG, no LLM: cheap enough to call before you know which ticket you are working on, and you should, on every new conversation. Use compose_context instead once you have a specific ticket.",
+  schema: GetCanonInputSchema,
+  handler: (userId, input, ctx) => getCanon(userId, input, { sessionId: ctx.sessionId }),
+};
+
 export const TOOLS: ReadonlyArray<ToolDefinition<unknown, unknown>> = [
   getAgentContractTool,
   listProjectsTool,
   projectOverviewTool,
+  getCanonTool,
   proposeDocumentTool,
   listDraftsTool,
   approveDraftTool,

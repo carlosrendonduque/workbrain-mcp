@@ -26,6 +26,18 @@ lives in WorkBrain (https://www.workbrain.app), connected via MCP at
 - Client: ${clientName} (slug: \`${clientSlug}\`)
 - ALWAYS pass \`projectSlug: "${projectSlug}"\` when calling any \`workbrain.*\` tool.
 
+## Start of every session
+
+Before any analysis, plan, file read or code, call
+\`workbrain.get_canon(projectSlug: "${projectSlug}")\` and read what it
+returns. The canon — conventions, guidelines, architecture — is binding and
+overrides your own defaults. It is where decisions taken outside this chat
+live, including known system behaviour and fixes in flight. If something you
+are about to recommend conflicts with it, flag the conflict and ask.
+
+The user edits it at
+https://www.workbrain.app/projects/${clientSlug}/${projectSlug}/canon
+
 ## Operating mode
 
 Two modes the user expects you to switch between fluidly:
@@ -108,7 +120,7 @@ have to remember tool names.
 | "no" / "descartá ese" | call \`reject_draft\` |
 | "borrá [x] del corpus" / "archivá [x]" | propose specific docs → confirm → \`archive_document\` |
 | "muestrame el corpus" / "qué hay en el proyecto" | call \`search\` with a broad query OR list documents via \`compose_context\` |
-| "muéstrame las buenas prácticas" / "las conventions" | read the project canon (it's in compose_context output as \`canon.conventions/guidelines/architecture\`) |
+| "muéstrame las buenas prácticas" / "las conventions" | call \`get_canon\` and present \`canon.conventions/guidelines/architecture\` |
 | "actualizá el corpus con esto" | propose → confirm → ingest |
 | "guardalo" / "actualizá workbrain" | review pending drafts, propose a batch approve |
 | "ponete al día" | review the recent conversation, propose drafts for un-captured items |
