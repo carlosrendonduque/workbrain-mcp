@@ -46,6 +46,14 @@ ticket (call \`get_ticket_progress\` to read it).
 Before anything else, call \`list_projects\` and present a numbered
 menu. After user picks, call \`project_overview\` for a 5-line snapshot.
 
+## RULE 1 — READ THE CANON. EVERY CONVERSATION.
+
+Once the project is known, call \`get_canon\` and read it, before any
+analysis, plan or code. It is binding and overrides your own defaults.
+\`project_overview\` only says canon EXISTS; it does not return the
+content. Never skip it — the canon holds decisions taken outside this
+chat, including known system behaviour and fixes in flight.
+
 ## Fresh-start checklist (when project has repoUrl)
 
 Right after \`project_overview\` returns a project with \`repoUrl\`,
@@ -73,10 +81,11 @@ approach, files probables, tests). Wait for "sí". Use
 
 ## Tools you have
 
-list_projects, project_overview, propose_document, list_drafts,
-approve_draft, reject_draft, archive_document, set_ticket_progress,
-get_ticket_progress, search, compose_context, record_decision,
-link_documents, ingest_paste, **get_agent_contract**, **recent_activity**.
+list_projects, project_overview, **get_canon**, propose_document,
+list_drafts, approve_draft, reject_draft, archive_document,
+set_ticket_progress, get_ticket_progress, search, compose_context,
+record_decision, link_documents, ingest_paste, **get_agent_contract**,
+**recent_activity**.
 
 ## RULE 3 — VERIFY BEFORE DESTRUCTIVE OPS.
 
@@ -212,8 +221,39 @@ brief snapshot (5-8 lines: canon flags, doc count, last activity, drafts
 pending).
 
 If the user explicitly mentions a project in their first message
-(\"trabajemos en acme\"), skip the menu — set the active project and
+("trabajemos en acme"), skip the menu — set the active project and
 call \`project_overview\` directly.
+
+================================================================
+RULE 1 — READ THE CANON BEFORE WORKING. EVERY CONVERSATION.
+================================================================
+
+As soon as the active project is known — right after
+\`project_overview\`, and before any analysis, plan, file read or code —
+call \`get_canon(projectSlug)\` and read what it returns.
+
+\`project_overview\` reports canon *flags* (whether conventions /
+guidelines / architecture are configured). It does not return their
+content. \`compose_context\` does return the content, but it requires a
+focus document, and at the start of a conversation there usually isn't
+one yet. \`get_canon\` closes that gap: no focus, no RAG, no LLM call.
+
+What comes back is binding:
+
+- **conventions** — timeless rules for this project/domain.
+- **guidelines** — expected way of working, the order of the work.
+- **architecture** — how the system actually behaves, including known
+  defects and fixes in flight.
+
+These override your own defaults and habits. If something you are about
+to recommend conflicts with them, flag the conflict and ask — do not
+improvise against the canon. Canon layering is project-over-domain: a
+project field that is set replaces the domain's field entirely, so read
+the \`source\` map to know which layer you are actually reading.
+
+This applies to every new conversation and every new ticket, on every
+machine. Do not skip it because the task looks small — the canon is
+where decisions taken outside this chat live.
 
 ================================================================
 FRESH-START CHECKLIST (immediately after project pick, when repoUrl is set)
@@ -365,7 +405,8 @@ VOCABULARY → ACTIONS
 | "borrá [x]" / "archivá [x]" | propose → confirm → archive_document |
 | "muestrame el corpus" | search with broad query |
 | "estoy en TICKET-X" | compose_context with focusExternalId=X |
-| "trabajemos en X" | set active project, call project_overview |
+| "trabajemos en X" | set active project, call project_overview, then get_canon |
+| "muéstrame las conventions / las buenas prácticas" | get_canon |
 | "qué proyectos tengo" | list_projects |
 | "en qué stage estamos" / "cómo viene este ticket" | get_ticket_progress |
 | "guarda el design / build / tests / deployment" | confirm content → set_ticket_progress |
