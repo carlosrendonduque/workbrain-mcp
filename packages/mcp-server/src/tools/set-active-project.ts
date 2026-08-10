@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { WorkBrainClient } from "../client.js";
-import { toolError, toolJson } from "./helpers.js";
 import { setActiveProject } from "../state.js";
+import { toolError, toolJson } from "./helpers.js";
 
 interface ProjectListItem {
   projectSlug: string;
@@ -20,7 +20,7 @@ export function register(server: McpServer, client: WorkBrainClient): void {
     "set_active_project",
     {
       description:
-        "Switch the active project for this MCP session. Validates that the slug exists in the user's project list before storing it. Subsequent ingest_paste and search calls default to this project.",
+        "Switch the active project. Validates that the slug exists in the user's project list before storing it. The choice is also saved for the current working directory, so future sessions started in this repo resolve the same project without being told again. Subsequent get_canon, compose_context, ingest_paste and search calls default to it.",
       inputSchema,
     },
     async ({ projectSlug }) => {
