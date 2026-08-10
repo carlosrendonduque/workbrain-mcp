@@ -1,10 +1,10 @@
+import { schema } from "@workbrain/shared";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
+import { getCanonDomainById, type MergedCanon, mergeCanon } from "./canon-domains";
 import { db } from "./db";
 import { type SearchChunk, search } from "./search";
-import { getCanonDomainById, mergeCanon } from "./canon-domains";
 
 export const ComposeContextInputSchema = z
   .object({
@@ -19,6 +19,12 @@ export const ComposeContextInputSchema = z
   });
 
 export type ComposeContextInput = z.infer<typeof ComposeContextInputSchema>;
+
+export const GetCanonInputSchema = z.object({
+  projectSlug: z.string().min(1),
+});
+
+export type GetCanonInput = z.infer<typeof GetCanonInputSchema>;
 
 export interface FocusDocument {
   documentId: string;
@@ -74,6 +80,17 @@ export interface ComposeContextResult {
   };
 }
 
+// The canon-only slice of a compose result: everything that is true for the
+// project regardless of which ticket is being worked. This is what an agent
+// needs at the top of a conversation, before there is a focus document.
+export interface GetCanonResult {
+  project: { slug: string; name: string };
+  client: { slug: string; name: string };
+  canon: ComposeContextResult["canon"];
+  stakeholders: StakeholderInScope[];
+  instructionsForAgent: string;
+}
+
 export class ComposeError extends Error {
   readonly code: string;
   readonly status: number;
@@ -113,6 +130,11 @@ function buildInstructions(args: {
   projectName: string;
   canonSources: { conventions: string; guidelines: string; architecture: string };
   domain: { slug: string; name: string } | null;
+  // "compose" describes a full payload with a focus document and RAG chunks;
+  // "canon" describes the canon-only payload get_canon returns. Same rules,
+  // different inventory — an agent told to read ragChunks that aren't there
+  // has been handed a lie.
+  mode: "compose" | "canon";
 }): string {
   const domainLabel = args.domain
     ? `domain "${args.domain.name}" (${args.domain.slug})`
@@ -120,17 +142,31 @@ function buildInstructions(args: {
 
   const sourceLine = (label: string, source: string): string => {
     if (source === "project") return `- ${label}: project-level (specific to ${args.projectName})`;
-    if (source === "domain")
-      return `- ${label}: ${domainLabel} (cross-project default)`;
+    if (source === "domain") return `- ${label}: ${domainLabel} (cross-project default)`;
     return `- ${label}: not configured`;
   };
 
-  return `You are working inside WorkBrain. The structured payload above gives you:
-- The active client and project, plus the merged canon (conventions, guidelines, architecture).
+  const inventory =
+    args.mode === "compose"
+      ? `- The active client and project, plus the merged canon (conventions, guidelines, architecture).
 - The current focus document (if any) with its frontmatter and full content.
 - Other documents explicitly linked from the focus, grouped by type.
 - Relevant chunks retrieved from the corpus by semantic similarity (RAG, reranked when possible).
+- Stakeholders for this project with their communication preferences.`
+      : `- The active client and project, plus the merged canon (conventions, guidelines, architecture).
 - Stakeholders for this project with their communication preferences.
+
+This is the canon only — no focus document and no corpus chunks were retrieved. Read the canon before proposing anything, then call compose_context with a ticket's externalId once you know which ticket you are working on.`;
+
+  const closing =
+    args.mode === "compose"
+      ? `
+
+ragChunks are sorted by relevance (rerankScore when present, similarity otherwise). The focus document is the primary subject — start there, then layer in linked documents and ragChunks as supporting context.`
+      : "";
+
+  return `You are working inside WorkBrain. The structured payload above gives you:
+${inventory}
 
 Active client: ${args.clientName}
 Active project: ${args.projectName}
@@ -146,9 +182,7 @@ Inviolable rules:
 2. If a recommendation conflicts with the canon above (project or domain), explicitly flag the conflict and ask the user to confirm before applying. Do not improvise against the canon.
 3. If the retrieved context is insufficient to answer, say so. Do not fabricate stakeholders, decisions, or conventions that are not in the corpus.
 4. When citing a ticket or document, use its external_id (e.g. TICKET-1234).
-5. For drafts directed at stakeholders, respect the indicated communication_style. Do not improvise tone.
-
-ragChunks are sorted by relevance (rerankScore when present, similarity otherwise). The focus document is the primary subject — start there, then layer in linked documents and ragChunks as supporting context.`;
+5. For drafts directed at stakeholders, respect the indicated communication_style. Do not improvise tone.${closing}`;
 }
 
 interface ResolvedProject {
@@ -254,6 +288,80 @@ async function loadStakeholders(projectId: string): Promise<StakeholderInScope[]
   return rows;
 }
 
+// Everything that depends only on the project, not on the focus document.
+// Shared by composeContext and getCanon so both return an identical canon
+// block and an identical instructions preamble.
+async function loadCanonBundle(
+  userId: string,
+  project: ResolvedProject,
+  mode: "compose" | "canon",
+): Promise<{
+  mergedCanon: MergedCanon;
+  stakeholders: StakeholderInScope[];
+  instructionsForAgent: string;
+}> {
+  const stakeholders = await loadStakeholders(project.projectId);
+  const domainCanon = project.domainId ? await getCanonDomainById(userId, project.domainId) : null;
+  const mergedCanon = mergeCanon(
+    {
+      conventions: project.conventions,
+      guidelines: project.guidelines,
+      architecture: project.architecture,
+    },
+    domainCanon,
+  );
+  const instructionsForAgent = buildInstructions({
+    clientName: project.clientName,
+    projectName: project.projectName,
+    canonSources: mergedCanon.source,
+    domain: mergedCanon.domain,
+    mode,
+  });
+  return { mergedCanon, stakeholders, instructionsForAgent };
+}
+
+// Canon without RAG, without a focus document and without an LLM call — one
+// project lookup plus two small selects. Cheap enough for an agent to call at
+// the start of every conversation, which is exactly what it is for.
+export async function getCanon(
+  userId: string,
+  input: GetCanonInput,
+  meta: InvocationMeta = {},
+): Promise<GetCanonResult> {
+  const start = Date.now();
+  const project = await resolveProject(userId, input.projectSlug);
+  const { mergedCanon, stakeholders, instructionsForAgent } = await loadCanonBundle(
+    userId,
+    project,
+    "canon",
+  );
+
+  await recordInvocation({
+    userId,
+    projectId: project.projectId,
+    operation: "get_canon",
+    sessionId: meta.sessionId,
+    status: "success",
+    userPrompt: `projectSlug=${input.projectSlug}`,
+    retrievedChunks: {},
+    latencyMs: Date.now() - start,
+  });
+
+  return {
+    project: { slug: project.projectSlug, name: project.projectName },
+    client: { slug: project.clientSlug, name: project.clientName },
+    canon: {
+      conventions: mergedCanon.conventions,
+      guidelines: mergedCanon.guidelines,
+      architecture: mergedCanon.architecture,
+      source: mergedCanon.source,
+      domain: mergedCanon.domain,
+    },
+    stakeholders,
+    instructionsForAgent,
+  };
+}
+
 export async function composeContext(
   userId: string,
   input: ComposeContextInput,
@@ -320,26 +428,11 @@ export async function composeContext(
       }
     }
 
-    const stakeholders = await loadStakeholders(project.projectId);
-
-    const domainCanon = project.domainId
-      ? await getCanonDomainById(userId, project.domainId)
-      : null;
-    const mergedCanon = mergeCanon(
-      {
-        conventions: project.conventions,
-        guidelines: project.guidelines,
-        architecture: project.architecture,
-      },
-      domainCanon,
+    const { mergedCanon, stakeholders, instructionsForAgent } = await loadCanonBundle(
+      userId,
+      project,
+      "compose",
     );
-
-    const instructionsForAgent = buildInstructions({
-      clientName: project.clientName,
-      projectName: project.projectName,
-      canonSources: mergedCanon.source,
-      domain: mergedCanon.domain,
-    });
 
     const result: ComposeContextResult = {
       project: { slug: project.projectSlug, name: project.projectName },

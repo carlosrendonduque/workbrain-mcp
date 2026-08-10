@@ -3,8 +3,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { WorkBrainClient } from "./client.js";
 import { loadConfig } from "./config.js";
+import { SERVER_INSTRUCTIONS } from "./instructions.js";
 import * as composeContext from "./tools/compose-context.js";
 import * as currentProject from "./tools/current-project.js";
+import * as getCanonTool from "./tools/get-canon.js";
 import * as ingestPaste from "./tools/ingest-paste.js";
 import * as linkDocuments from "./tools/link-documents.js";
 import * as recordDecision from "./tools/record-decision.js";
@@ -17,10 +19,11 @@ async function main(): Promise<void> {
 
   const server = new McpServer(
     { name: "workbrain", version: "0.1.0" },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
   );
 
   ingestPaste.register(server, client);
+  getCanonTool.register(server, client);
   searchTool.register(server, client);
   setActiveProject.register(server, client);
   currentProject.register(server, client);

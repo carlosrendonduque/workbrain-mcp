@@ -194,10 +194,18 @@ Every call writes a row to `invocations` (success or error path).
 
 Exposed by `packages/mcp-server` over stdio:
 
-- `set_active_project` — switch the in-process active project (validated against `/api/projects`).
-- `current_project` — report the active project + display name.
+- `set_active_project` — switch the active project (validated against `/api/projects`) and bind it to the current working directory.
+- `current_project` — report the active project, display name, and how it was resolved (`session` / `env` / `directory` / `none`).
+- `get_canon` — calls `POST /api/context/canon`. Canon only: no focus document, no RAG, no LLM. What an agent calls at the top of a conversation.
+- `compose_context` — calls `POST /api/context/compose`. The full payload for a known ticket.
 - `ingest_paste` — calls `POST /api/ingest/paste`. Defaults `projectSlug` to the active project.
 - `search` — calls `POST /api/search`. Defaults `projectSlug` to the active project. Errors loudly if no active project and none passed.
+
+### Always-on context
+
+The server advertises `instructions` (see `packages/mcp-server/src/instructions.ts`) during the MCP `initialize` handshake. The host injects that block before the first user turn, so the "resolve the project, then read the canon" contract reaches every new conversation on every machine without committing anything to a project repo. Per-project content belongs in the canon itself, never in this block.
+
+The active project resolves in this order: an explicit `set_active_project` call > `WORKBRAIN_PROJECT_SLUG` > a binding previously saved for the current working directory (longest matching prefix, so subdirectories inherit). Bindings live in `~/.workbrain/state.json`, overridable with `WORKBRAIN_STATE_FILE`. There is deliberately no "last project used" fallback: clients are siloed, and resolving to whatever was touched last would surface one client's context inside another client's repo.
 
 ## Cross-project isolation
 
