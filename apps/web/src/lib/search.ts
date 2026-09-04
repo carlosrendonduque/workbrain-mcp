@@ -3,6 +3,7 @@ import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { ARCHIVED_STATUS } from "./curation";
+import type { WorkbrainDb } from "./db";
 import { type RerankUsage, embed, rerank } from "./embeddings";
 import { TenancyError, resolveProjectContext } from "./tenancy";
 
@@ -73,6 +74,75 @@ function rerankCostUsd(usage: RerankUsage): string {
   return (usage.totalTokens * RERANK_PRICING_PER_TOKEN).toFixed(6);
 }
 
+/**
+ * Build the chunk-retrieval query.
+ *
+ * Extracted so the one invariant that matters can be tested without a
+ * database: whatever combination of optional filters a caller passes, the
+ * generated SQL still restricts to a single project_id. Cross-client leakage
+ * is the worst possible bug in this product, and until this existed the only
+ * thing standing between it and a careless refactor was a comment.
+ *
+ * Tests render this through `.toSQL()`, so they exercise the query the
+ * application actually runs rather than a copy of it.
+ */
+export function buildChunkQuery(args: {
+  corpusDb: WorkbrainDb;
+  projectId: string;
+  queryVec: number[];
+  minSimilarity: number;
+  limit: number;
+  input: Pick<SearchInput, "types" | "externalId" | "dateRange">;
+}) {
+  const { corpusDb, projectId, queryVec, minSimilarity, limit, input } = args;
+
+  const distance = cosineDistance(schema.chunks.embedding, queryVec);
+  const similaritySql = sql<number>`(1 - (${distance}))`;
+
+  const archivedFilter = or(
+    isNull(schema.documents.status),
+    ne(schema.documents.status, ARCHIVED_STATUS),
+  );
+  const conditions = [
+    // SAFETY: the project_id filter is mandatory and always first. Nothing
+    // below is allowed to be conditional on it.
+    eq(schema.chunks.projectId, projectId),
+    sql`(1 - (${distance})) >= ${minSimilarity}`,
+  ];
+  if (archivedFilter) conditions.push(archivedFilter);
+  if (input.types && input.types.length > 0) {
+    conditions.push(inArray(schema.chunks.type, input.types));
+  }
+  if (input.externalId) {
+    conditions.push(eq(schema.documents.externalId, input.externalId));
+  }
+  if (input.dateRange?.from) {
+    conditions.push(gte(schema.documents.createdAt, new Date(input.dateRange.from)));
+  }
+  if (input.dateRange?.to) {
+    // Treat the "to" bound as inclusive end-of-day so 2026-05-06 covers
+    // documents ingested at any time on May 6.
+    const endOfDay = new Date(`${input.dateRange.to}T23:59:59.999Z`);
+    conditions.push(lte(schema.documents.createdAt, endOfDay));
+  }
+
+  return corpusDb
+    .select({
+      documentId: schema.chunks.documentId,
+      documentPath: schema.documents.path,
+      documentTitle: schema.documents.title,
+      externalId: schema.documents.externalId,
+      type: schema.chunks.type,
+      text: schema.chunks.text,
+      similarity: similaritySql,
+    })
+    .from(schema.chunks)
+    .innerJoin(schema.documents, eq(schema.chunks.documentId, schema.documents.id))
+    .where(and(...conditions))
+    .orderBy(desc(similaritySql))
+    .limit(limit);
+}
+
 export async function search(
   userId: string,
   input: SearchInput,
@@ -108,51 +178,14 @@ export async function search(
       throw new SearchError("embedding_failed", "Voyage returned no embedding for query", 500);
     }
 
-    const distance = cosineDistance(schema.chunks.embedding, queryVec);
-    const similaritySql = sql<number>`(1 - (${distance}))`;
-
-    const archivedFilter = or(
-      isNull(schema.documents.status),
-      ne(schema.documents.status, ARCHIVED_STATUS),
-    );
-    const conditions = [
-      // SAFETY: project_id filter is mandatory and always present.
-      // Cross-project leakage is the worst possible bug for this product.
-      eq(schema.chunks.projectId, project.projectId),
-      sql`(1 - (${distance})) >= ${minSimilarity}`,
-    ];
-    if (archivedFilter) conditions.push(archivedFilter);
-    if (input.types && input.types.length > 0) {
-      conditions.push(inArray(schema.chunks.type, input.types));
-    }
-    if (input.externalId) {
-      conditions.push(eq(schema.documents.externalId, input.externalId));
-    }
-    if (input.dateRange?.from) {
-      conditions.push(gte(schema.documents.createdAt, new Date(input.dateRange.from)));
-    }
-    if (input.dateRange?.to) {
-      // Treat the "to" bound as inclusive end-of-day so 2026-05-06 covers
-      // documents ingested at any time on May 6.
-      const endOfDay = new Date(`${input.dateRange.to}T23:59:59.999Z`);
-      conditions.push(lte(schema.documents.createdAt, endOfDay));
-    }
-
-    const rows = await corpusDb
-      .select({
-        documentId: schema.chunks.documentId,
-        documentPath: schema.documents.path,
-        documentTitle: schema.documents.title,
-        externalId: schema.documents.externalId,
-        type: schema.chunks.type,
-        text: schema.chunks.text,
-        similarity: similaritySql,
-      })
-      .from(schema.chunks)
-      .innerJoin(schema.documents, eq(schema.chunks.documentId, schema.documents.id))
-      .where(and(...conditions))
-      .orderBy(desc(similaritySql))
-      .limit(cosineLimit);
+    const rows = await buildChunkQuery({
+      corpusDb,
+      projectId: project.projectId,
+      queryVec,
+      minSimilarity,
+      limit: cosineLimit,
+      input,
+    });
 
     const candidates: SearchChunk[] = rows.map((r) => ({
       documentId: r.documentId,

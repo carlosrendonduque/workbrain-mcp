@@ -158,6 +158,37 @@ Próximas tareas en orden recomendado, con razón:
 Después de estas 7 tasks (~23h), pausá para dogfooding real. Las decisiones de
 Phase 5/6/7 vienen mejor informadas con uso acumulado.
 
+## Decisiones tomadas y descartadas
+
+### ⏭️ Row-level security en la base compartida — descartado (2026-09-04)
+
+Se evaluó poner las reglas de aislamiento dentro de Postgres para que la
+separación entre clientes de la base compartida no dependa de un `WHERE` en
+código. **Se descartó.** Tres razones, la última es la que decide:
+
+1. **Exige cambiar el driver.** Las reglas necesitan `set_config` dentro de una
+   transacción. El driver actual (`neon-http`) manda cada consulta como un
+   request HTTP suelto, sin sesión. Habría que pasar todas las consultas a
+   WebSocket/Pool y envolverlas en transacción, con el costo de latencia.
+2. **Exige un rol nuevo.** Hoy la app se conecta como dueña de las tablas, y el
+   dueño se salta las reglas. Escribirlas sin cambiar de rol no haría nada.
+3. **Ya hay una respuesta mejor y más barata.** Al cliente que pregunta se le da
+   **base propia** (`db:isolate`, ~1-2 USD/mes). La frase "no hay datos de nadie
+   más en tu base" es más fuerte que "compartís base pero hay reglas", y ya está
+   construida.
+
+**Lo que se hizo en su lugar**, atacando el mismo riesgo por menos: un test que
+renderiza la query real de búsqueda y verifica que el filtro por proyecto
+sobrevive a toda combinación de filtros opcionales (`src/lib/search.test.ts`),
+y un detector de sesiones que tocaron más de un cliente
+(`pnpm --filter @workbrain/web check:sessions`).
+
+**Cuándo reabrir:** si aparece un cliente que exige aislamiento verificable
+*dentro* de una base compartida — es decir, que no acepta base propia y tampoco
+acepta el filtro en código. No ha pasado todavía.
+
+---
+
 ## Decisiones diferidas hasta más uso
 
 Cosas que vimos en dogfooding pero no decidimos todavía. Recolectar evidencia antes

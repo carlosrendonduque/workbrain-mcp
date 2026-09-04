@@ -14,6 +14,7 @@
     "db:info": "tsx scripts/db-info.ts",
     "db:isolation": "tsx scripts/isolation-status.ts",
     "db:isolate": "tsx scripts/isolate-client.ts",
+    "check:sessions": "tsx scripts/check-session-isolation.ts",
     "db:seed:dev": "tsx scripts/seed-dev.ts",
     "db:seed:projects": "tsx scripts/seed-projects.ts",
     "db:meta:sync": "tsx scripts/meta-sync.ts",

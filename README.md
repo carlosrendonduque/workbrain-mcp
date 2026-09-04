@@ -170,6 +170,7 @@ Interactive prompt for client and project slugs. Validates uniqueness, asks befo
 | `pnpm --filter @workbrain/web db:migrate:all` | Apply them to the central database **and every dedicated client database** |
 | `pnpm --filter @workbrain/web db:isolation` | Show where each client's corpus lives and whether the app can reach it |
 | `pnpm --filter @workbrain/web db:isolate <client>` | Move a client into a database of its own |
+| `pnpm --filter @workbrain/web check:sessions` | Find any chat session that touched more than one client |
 | `pnpm --filter @workbrain/web db:generate` | Generate new migration from schema diff |
 | `pnpm --filter @workbrain/web db:info` | Inspect tables, extensions, indexes |
 | `pnpm --filter @workbrain/web db:seed:dev` | Idempotent dev seed (placeholders) |
@@ -300,7 +301,36 @@ environment variable holding the connection string, not the string itself.
 
 ## Cross-project isolation
 
-The `project_id` filter on `/api/search` is mandatory and the codebase has tests pinning that. We verify it end-to-end by ingesting deliberately distinctive content into one project and searching with the same wording from another:
+Cross-client leakage is the single worst possible bug for this product. Three
+things guard against it, at three different distances.
+
+**The query itself.** `src/lib/search.test.ts` renders the real chunk query
+through drizzle's `.toSQL()` and asserts the `project_id` filter survives every
+combination of optional filters a caller can pass. No database is contacted, so
+it runs in CI on every change. It is a real guard, not a decorative one: delete
+the filter and ten tests fail.
+
+**The routing.** `src/lib/tenancy.test.ts` pins the rule that a client's
+projects never land in another client's target, on shared and dedicated storage
+alike, and that a scoped API key sees neither the projects nor the labels of
+clients it may not reach.
+
+**The record.** Databases can be perfectly separated and the mixing still
+happen one level up, in the agent's context window: a chat loads one client's
+canon, the user changes directory, and it carries on for another with the first
+still in the window. WorkBrain does not control that window, but every
+invocation carries the chat's session id, so a session that spanned two clients
+is detectable after the fact:
+
+```bash
+pnpm --filter @workbrain/web check:sessions            # all time
+pnpm --filter @workbrain/web check:sessions --days 30  # recent only
+```
+
+It exits non-zero when it finds one, so it can gate a release. Two projects of
+the *same* client are normal work and are not reported.
+
+You can still check by hand, end to end:
 
 ```bash
 # from project-y, search for content that lives only in project-x
@@ -310,7 +340,9 @@ curl -s -X POST http://localhost:3000/api/search \
 # expect: { ok: true, data: { chunks: [] } }
 ```
 
-Cross-client leakage is the single worst possible bug for this product.
+**Not guarded:** row-level security inside the shared database. It was
+evaluated and deliberately skipped — see the note in
+`docs/06-roadmap.md`.
 
 ## Deploying `apps/web` to Vercel + Neon (manual)
 
