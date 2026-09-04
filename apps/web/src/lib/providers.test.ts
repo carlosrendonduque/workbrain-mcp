@@ -146,16 +146,59 @@ describe("resolveEmbeddings", () => {
     expect(out.dimensions).toBe(1024);
   });
 
-  // Embedding runs on every ingest, so a silent fallback here would leak a
-  // little of the client's text continuously rather than once.
-  it("refuses bedrock embeddings instead of falling back to Voyage", () => {
-    expect(() => mod.resolveEmbeddings(routing({ embeddingProvider: "bedrock" }))).toThrow(
-      /not implemented/,
+  it("routes to the client's own Bedrock when configured", () => {
+    process.env.ACME_AWS_KEY = "AKIAEXAMPLE";
+    process.env.ACME_AWS_SECRET = "secret";
+    const out = mod.resolveEmbeddings(
+      routing({
+        embeddingProvider: "bedrock",
+        embeddingConfig: {
+          region: "ap-southeast-2",
+          accessKeyIdEnv: "ACME_AWS_KEY",
+          secretAccessKeyEnv: "ACME_AWS_SECRET",
+        },
+      }),
     );
+    expect(out.provider).toBe("bedrock");
+    expect(out.dimensions).toBe(1024);
+    expect(out.destination).toMatch(/client's own AWS account/);
   });
 
-  it("explains why the fallback would be wrong", () => {
-    expect(() => mod.resolveEmbeddings(routing({ embeddingProvider: "bedrock" }))).toThrow(
+  it("defaults Bedrock to Cohere, which batches and is 1024-wide", () => {
+    process.env.ACME_AWS_KEY = "AKIAEXAMPLE";
+    process.env.ACME_AWS_SECRET = "secret";
+    const out = mod.resolveEmbeddings(
+      routing({
+        embeddingProvider: "bedrock",
+        embeddingConfig: {
+          region: "ap-southeast-2",
+          accessKeyIdEnv: "ACME_AWS_KEY",
+          secretAccessKeyEnv: "ACME_AWS_SECRET",
+        },
+      }),
+    );
+    expect(out.model).toBe("cohere.embed-english-v3");
+  });
+
+  // Embedding runs on every ingest, so a silent fallback here would leak a
+  // little of the client's text continuously rather than once.
+  it("refuses Bedrock with missing credentials rather than using Voyage", () => {
+    expect(() =>
+      mod.resolveEmbeddings(
+        routing({
+          embeddingProvider: "bedrock",
+          embeddingConfig: {
+            region: "ap-southeast-2",
+            accessKeyIdEnv: "ACME_AWS_KEY",
+            secretAccessKeyEnv: "ACME_AWS_SECRET",
+          },
+        }),
+      ),
+    ).toThrow(/ACME_AWS_KEY/);
+  });
+
+  it("refuses vertex embeddings, explaining why the fallback would be wrong", () => {
+    expect(() => mod.resolveEmbeddings(routing({ embeddingProvider: "vertex" }))).toThrow(
       /every document/,
     );
   });
@@ -183,7 +226,17 @@ describe("describeRouting", () => {
   });
 
   it("marks broken embeddings independently of the llm", () => {
-    const out = mod.describeRouting(routing({ embeddingProvider: "bedrock" }));
+    // Bedrock configured but with no credentials in this environment.
+    const out = mod.describeRouting(
+      routing({
+        embeddingProvider: "bedrock",
+        embeddingConfig: {
+          region: "ap-southeast-2",
+          accessKeyIdEnv: "ACME_AWS_KEY",
+          secretAccessKeyEnv: "ACME_AWS_SECRET",
+        },
+      }),
+    );
     expect(out.llm).toMatch(/Anthropic/);
     expect(out.embeddings.startsWith("❌")).toBe(true);
   });
