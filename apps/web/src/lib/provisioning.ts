@@ -12,15 +12,26 @@ import type { WorkbrainDb } from "./db";
  * the shared database, so an interrupted move leaves nothing broken.
  */
 
-/** Env var name suggested for a client's dedicated connection string. */
+/**
+ * Env var name suggested for a client's dedicated connection string.
+ *
+ * Takes the SLUG, which is already constrained to lowercase letters, numbers
+ * and dashes before any client is created — so this only has to swap dashes
+ * for underscores. It validates rather than sanitises: a slug that got past
+ * validation is a bug worth seeing, not something to quietly rewrite into a
+ * name that no longer matches the client it belongs to.
+ *
+ * The client's NAME is free text and may contain anything, including accents.
+ * It never reaches here.
+ */
 export function envVarNameForClient(clientSlug: string): string {
-  const cleaned = clientSlug
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toUpperCase();
-  return `WORKBRAIN_DB_${cleaned || "CLIENT"}`;
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(clientSlug)) {
+    throw new Error(
+      `"${clientSlug}" is not a valid client slug (lowercase letters, numbers and dashes). ` +
+        "Environment variable names are derived from the slug, not the display name.",
+    );
+  }
+  return `WORKBRAIN_DB_${clientSlug.replace(/-/g, "_").toUpperCase()}`;
 }
 
 /**
