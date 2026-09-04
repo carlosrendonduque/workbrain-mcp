@@ -297,15 +297,43 @@ export async function createProject(
     );
   }
 
-  await db.insert(schema.projects).values({
-    clientId,
-    domainId: input.domainId,
-    slug: input.projectSlug,
-    name: input.projectName.trim(),
-    persist: input.persist,
-    repoUrl: input.repoUrl?.trim() || null,
-    defaultBranch: input.defaultBranch?.trim() || null,
-  });
+  const insertedProject = await db
+    .insert(schema.projects)
+    .values({
+      clientId,
+      domainId: input.domainId,
+      slug: input.projectSlug,
+      name: input.projectName.trim(),
+      persist: input.persist,
+      repoUrl: input.repoUrl?.trim() || null,
+      defaultBranch: input.defaultBranch?.trim() || null,
+    })
+    .returning();
+
+  // A project under a dedicated client needs its row mirrored into that
+  // client's database too, or the first document ingested for it violates
+  // the foreign key on documents.project_id. Nothing reads the mirror —
+  // the central registry stays authoritative — it exists so the constraint
+  // resolves. See replicateRegistry in lib/provisioning.ts.
+  const clientRows = await db
+    .select({
+      isolationMode: schema.clients.isolationMode,
+      corpusDbUrlEnv: schema.clients.corpusDbUrlEnv,
+    })
+    .from(schema.clients)
+    .where(eq(schema.clients.id, clientId))
+    .limit(1);
+  const clientRow = clientRows[0];
+  const created = insertedProject[0];
+  if (clientRow && clientRow.isolationMode === "dedicated" && created) {
+    // corpusDbFor throws when a dedicated client is misconfigured. Let it:
+    // a project that exists centrally but not in the client's database is a
+    // corruption that only shows up later, on ingest.
+    await corpusDbFor(clientRow)
+      .insert(schema.projects)
+      .values({ ...created, domainId: null })
+      .onConflictDoNothing();
+  }
 
   return { clientSlug, projectSlug: input.projectSlug };
 }
