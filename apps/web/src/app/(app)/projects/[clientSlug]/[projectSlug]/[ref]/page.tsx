@@ -113,7 +113,7 @@ export default async function DocumentDetailPage({ params }: PageProps) {
   const session = await requireSession();
   const { clientSlug, projectSlug, ref } = await params;
 
-  const doc = await getDocumentDetail(session.userId, clientSlug, projectSlug, ref);
+  const doc = await getDocumentDetail(session.userId, clientSlug, projectSlug, ref, null);
   if (!doc) notFound();
 
   // Links and sibling documents live in the same database as the document.

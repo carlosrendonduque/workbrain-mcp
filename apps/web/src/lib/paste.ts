@@ -7,7 +7,12 @@ import { buildDocumentPath, writeDocument } from "./corpus";
 import type { WorkbrainDb } from "./db";
 import { chunkMarkdown } from "./chunking";
 import { embed } from "./embeddings";
-import { type ProjectContext, TenancyError, resolveProjectContext } from "./tenancy";
+import {
+  type ClientScope,
+  type ProjectContext,
+  TenancyError,
+  resolveProjectContext,
+} from "./tenancy";
 import { commitAndPush, ensureRepo, loadRepoConfigFromEnv } from "./git";
 
 const DOCUMENT_TYPES = [
@@ -206,9 +211,13 @@ async function autoLinkReferences(args: {
   return { links, unmatched };
 }
 
-async function resolveProject(userId: string, projectSlug: string): Promise<ProjectContext> {
+async function resolveProject(
+  userId: string,
+  projectSlug: string,
+  scope: ClientScope,
+): Promise<ProjectContext> {
   try {
-    return await resolveProjectContext(userId, projectSlug);
+    return await resolveProjectContext(userId, projectSlug, scope);
   } catch (err) {
     if (err instanceof TenancyError) throw new IngestError(err.code, err.message, err.status);
     throw err;
@@ -218,7 +227,7 @@ async function resolveProject(userId: string, projectSlug: string): Promise<Proj
 export async function ingestPaste(
   userId: string,
   input: IngestPasteInput,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<IngestPasteResult> {
   const start = Date.now();
 
@@ -232,7 +241,7 @@ export async function ingestPaste(
   let inferredReferences: string[] = [];
 
   try {
-    projectInfo = await resolveProject(userId, input.projectSlug);
+    projectInfo = await resolveProject(userId, input.projectSlug, meta.clientScope);
 
     // Auto-classify only when caller did not pass type. The classifier is a
     // fallback, not a validator — explicit type from the caller is always honored.

@@ -41,7 +41,7 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
   const project = await getProjectByPath(session.userId, clientSlug, projectSlug);
   if (!project) notFound();
 
-  const rows = await listActivity(session.userId, {
+  const rows = await listActivity(session.userId, null, {
     projectId: project.projectId,
     sessionId: sessionFilter && sessionFilter.length > 0 ? sessionFilter : undefined,
     limit: 100,
@@ -82,13 +82,13 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
 
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">
-            {project.projectName} · activity
-          </h1>
+          <h1 className="text-2xl font-semibold text-zinc-100">{project.projectName} · activity</h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Mutations on this project — drafts proposed/approved/rejected, documents
-            ingested or archived, links created. Reads (search, compose_context) live
-            in <Link href="/audit" className="text-indigo-300 hover:text-indigo-200">/audit</Link>{" "}
+            Mutations on this project — drafts proposed/approved/rejected, documents ingested or
+            archived, links created. Reads (search, compose_context) live in{" "}
+            <Link href="/audit" className="text-indigo-300 hover:text-indigo-200">
+              /audit
+            </Link>{" "}
             for forensics. Click a row to see the raw invocation.
           </p>
         </div>
@@ -104,16 +104,15 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
 
       {sessionFilter ? (
         <p className="mb-4 rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
-          Showing only session{" "}
-          <code className="font-mono">{sessionFilter.slice(0, 12)}…</code>
+          Showing only session <code className="font-mono">{sessionFilter.slice(0, 12)}…</code>
         </p>
       ) : null}
 
       {sessionGroups.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-6 text-sm text-zinc-500">
-          No activity recorded yet for this project. Mutations from the agent
-          (propose_document, approve_draft, etc.) and the web UI (canon edits,
-          domain assignments) will appear here as they happen.
+          No activity recorded yet for this project. Mutations from the agent (propose_document,
+          approve_draft, etc.) and the web UI (canon edits, domain assignments) will appear here as
+          they happen.
         </div>
       ) : (
         <div className="space-y-4">
@@ -141,7 +140,9 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
                     )}
                   </span>
                   <span className="text-zinc-600">·</span>
-                  <span className="text-zinc-500">{group.rows.length} action{group.rows.length === 1 ? "" : "s"}</span>
+                  <span className="text-zinc-500">
+                    {group.rows.length} action{group.rows.length === 1 ? "" : "s"}
+                  </span>
                 </div>
                 {group.sessionId ? (
                   <Link
@@ -158,7 +159,10 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
                   return (
                     <li key={r.id} className="px-5 py-2.5 text-sm">
                       <div className="flex items-center gap-3">
-                        <span className={`h-2 w-2 rounded-full ${dot.cls}`} aria-label={dot.label} />
+                        <span
+                          className={`h-2 w-2 rounded-full ${dot.cls}`}
+                          aria-label={dot.label}
+                        />
                         <span className="text-zinc-200">{r.description}</span>
                         <span className="ml-auto flex items-center gap-3 text-[11px] text-zinc-500">
                           <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono uppercase tracking-wide">

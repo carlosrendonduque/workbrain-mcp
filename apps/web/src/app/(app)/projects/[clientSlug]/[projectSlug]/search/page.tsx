@@ -59,12 +59,16 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
   let result: Awaited<ReturnType<typeof search>> | null = null;
   if (query) {
     try {
-      result = await search(session.userId, {
-        query,
-        projectSlug,
-        types: activeTypes.length > 0 ? activeTypes : undefined,
-        useRerank,
-      });
+      result = await search(
+        session.userId,
+        {
+          query,
+          projectSlug,
+          types: activeTypes.length > 0 ? activeTypes : undefined,
+          useRerank,
+        },
+        { sessionId: null, clientScope: null },
+      );
     } catch (err) {
       if (err instanceof SearchError) {
         resultErr = err.message;

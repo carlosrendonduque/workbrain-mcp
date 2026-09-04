@@ -1,6 +1,6 @@
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
 import { type WorkbrainDb, schema } from "./db";
-import { corpusMapForUser, fanOutCorpus } from "./tenancy";
+import { type ClientScope, corpusMapForUser, fanOutCorpus } from "./tenancy";
 
 export interface InvocationDetail {
   id: string;
@@ -48,11 +48,18 @@ export const ACTIVITY_KINDS = [
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
-// Caller-side metadata that travels through every lib mutation so the
-// audit row knows which session triggered it. Always optional — web
-// actions and one-off scripts have no session and pass null.
+// Who is calling and how far they may reach. Travels through every lib
+// operation: `sessionId` so the audit row knows which chat triggered it,
+// `clientScope` so the operation cannot touch a client the caller is not
+// entitled to.
+//
+// `clientScope` is REQUIRED on purpose. Optional would fail open — one
+// forgotten call site and an API key pinned to one client quietly gets all of
+// them. Callers that are legitimately unscoped (the webapp, where the owner
+// is signed in, and one-off scripts) say so by passing null.
 export interface InvocationMeta {
   sessionId?: string | null;
+  clientScope: ClientScope;
 }
 
 interface RecordInvocationInput {
@@ -135,12 +142,13 @@ const MAX_PAGE_SIZE = 200;
 
 export async function listInvocations(
   userId: string,
+  scope: ClientScope,
   opts: ListInvocationsOpts = {},
 ): Promise<ListInvocationsResult> {
   const pageSize = Math.min(Math.max(opts.pageSize ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
   const requestedPage = Math.max(opts.page ?? 1, 1);
 
-  const map = await corpusMapForUser(userId);
+  const map = await corpusMapForUser(userId, scope);
 
   const filters: SQL[] = [eq(schema.invocations.userId, userId)];
   if (opts.projectId) filters.push(eq(schema.invocations.projectId, opts.projectId));
@@ -237,6 +245,7 @@ interface ListActivityOpts {
 
 export async function listActivity(
   userId: string,
+  scope: ClientScope,
   opts: ListActivityOpts = {},
 ): Promise<ActivityRow[]> {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
@@ -251,7 +260,7 @@ export async function listActivity(
   if (opts.projectId) filters.push(eq(schema.invocations.projectId, opts.projectId));
   if (opts.sessionId) filters.push(eq(schema.invocations.sessionId, opts.sessionId));
 
-  const map = await corpusMapForUser(userId);
+  const map = await corpusMapForUser(userId, scope);
   const merged = await fanOutCorpus(map, (t) =>
     t.db
       .select({
@@ -335,8 +344,8 @@ function describeActivity(args: {
   }
 }
 
-export async function getDistinctOperations(userId: string): Promise<string[]> {
-  const map = await corpusMapForUser(userId);
+export async function getDistinctOperations(userId: string, scope: ClientScope): Promise<string[]> {
+  const map = await corpusMapForUser(userId, scope);
   const rows = await fanOutCorpus(map, (t) =>
     t.db
       .selectDistinct({ operation: schema.invocations.operation })

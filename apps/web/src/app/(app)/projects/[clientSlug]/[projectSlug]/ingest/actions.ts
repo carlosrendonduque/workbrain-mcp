@@ -1,7 +1,12 @@
 "use server";
 
 import { z } from "zod";
-import { IngestError, IngestPasteInputSchema, type IngestPasteResult, ingestPaste } from "@/lib/paste";
+import {
+  IngestError,
+  IngestPasteInputSchema,
+  type IngestPasteResult,
+  ingestPaste,
+} from "@/lib/paste";
 import { requireSession } from "@/lib/webapp-auth";
 
 export type IngestActionState =
@@ -53,7 +58,10 @@ export async function ingestPasteAction(
   }
 
   try {
-    const result = await ingestPaste(session.userId, parsed.data);
+    const result = await ingestPaste(session.userId, parsed.data, {
+      sessionId: null,
+      clientScope: null,
+    });
     return { status: "success", result, clientSlug, projectSlug };
   } catch (err) {
     if (err instanceof IngestError) {

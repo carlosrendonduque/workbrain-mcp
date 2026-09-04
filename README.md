@@ -247,6 +247,24 @@ Each dedicated database also holds a copy of its own `clients` row and its
 authoritative — they exist so the corpus tables' foreign keys resolve, and so
 a dedicated database is a coherent, restorable thing on its own.
 
+### Limiting an API key to one client
+
+A key can be pinned to a single client when you create it (Account → API
+keys → *Can reach*). A pinned key can read and write that client and nothing
+else: it cannot search another client's corpus, cannot list another client's
+projects, and cannot even learn that they exist — a project outside the key's
+reach is reported as missing, never as forbidden.
+
+Use it for the key that lives in one client's repo. If that laptop is lost,
+the blast radius is that engagement instead of every engagement. Keys created
+before this existed, and keys left on "every client", keep working unchanged.
+
+The scope is enforced in `src/lib/tenancy.ts`, and it is a **required**
+argument there rather than an optional one. Optional would fail open: forget
+it at one call site and a pinned key quietly gets everything. Required makes
+the compiler ask at every call site, and callers that are legitimately
+unscoped — the webapp, where the owner is signed in — pass `null` explicitly.
+
 ### Moving a client to its own database
 
 The move copies and verifies everything **before** the client switches over,

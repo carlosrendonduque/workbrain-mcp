@@ -107,13 +107,15 @@ async function resolveDocument(
 export async function linkDocuments(
   userId: string,
   input: LinkDocumentsInput,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<LinkResult> {
   const start = Date.now();
-  const project = await resolveProjectContext(userId, input.projectSlug).catch((err: unknown) => {
-    if (err instanceof TenancyError) throw new LinkError(err.code, err.message, err.status);
-    throw err;
-  });
+  const project = await resolveProjectContext(userId, input.projectSlug, meta.clientScope).catch(
+    (err: unknown) => {
+      if (err instanceof TenancyError) throw new LinkError(err.code, err.message, err.status);
+      throw err;
+    },
+  );
   const corpusDb = project.corpusDb;
 
   const from = await resolveDocument(

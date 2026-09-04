@@ -29,15 +29,7 @@ function formatRelative(value: Date | string | null): string {
   return `${Math.round(months / 12)}y ago`;
 }
 
-function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
+function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
       <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
@@ -67,10 +59,10 @@ export default async function DashboardPage() {
   const session = await requireSession();
 
   const [overview, projects, recent, ops] = await Promise.all([
-    getOverviewStats(session.userId),
-    getProjectsForUser(session.userId),
-    getRecentInvocations(session.userId, 12),
-    getOperationBreakdownLast7d(session.userId),
+    getOverviewStats(session.userId, null),
+    getProjectsForUser(session.userId, null),
+    getRecentInvocations(session.userId, null, 12),
+    getOperationBreakdownLast7d(session.userId, null),
   ]);
 
   const successRateLabel =
@@ -112,9 +104,7 @@ export default async function DashboardPage() {
         <div className="lg:col-span-2 rounded-xl border border-zinc-800 bg-zinc-950/40">
           <header className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
             <h2 className="text-sm font-medium text-zinc-200">Projects</h2>
-            <span className="text-xs text-zinc-500">
-              {NUMBER.format(projects.length)} total
-            </span>
+            <span className="text-xs text-zinc-500">{NUMBER.format(projects.length)} total</span>
           </header>
           {projects.length === 0 ? (
             <p className="px-5 py-6 text-sm text-zinc-500">
@@ -135,10 +125,7 @@ export default async function DashboardPage() {
                 {projects.map((p) => (
                   <tr key={p.projectId} className="group hover:bg-zinc-900/40">
                     <td className="px-5 py-3">
-                      <Link
-                        href={`/projects/${p.clientSlug}/${p.projectSlug}`}
-                        className="block"
-                      >
+                      <Link href={`/projects/${p.clientSlug}/${p.projectSlug}`} className="block">
                         <div className="font-medium text-zinc-100 group-hover:text-indigo-300">
                           {p.projectName}
                         </div>

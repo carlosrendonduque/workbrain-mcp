@@ -1,5 +1,6 @@
 import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { type WorkbrainDb, corpusDbFor, db, schema } from "./db";
+import type { ClientScope } from "./tenancy";
 
 export interface ProjectOverview {
   projectSlug: string;
@@ -30,6 +31,7 @@ export interface ProjectOverview {
 export async function getProjectOverview(
   userId: string,
   projectSlug: string,
+  scope: ClientScope,
 ): Promise<ProjectOverview | null> {
   const projectRows = await db
     .select({
@@ -42,6 +44,7 @@ export async function getProjectOverview(
       architecture: schema.projects.architecture,
       repoUrl: schema.projects.repoUrl,
       defaultBranch: schema.projects.defaultBranch,
+      clientId: schema.clients.id,
       clientSlug: schema.clients.slug,
       clientName: schema.clients.name,
       isolationMode: schema.clients.isolationMode,
@@ -53,7 +56,9 @@ export async function getProjectOverview(
     .limit(1);
 
   const project = projectRows[0];
-  if (!project) return null;
+  // A project outside the caller's scope is reported as missing, not as
+  // forbidden — "forbidden" would confirm it exists under another client.
+  if (!project || (scope !== null && scope !== project.clientId)) return null;
 
   // Counts below read this client's content, which may live in its own
   // database — never the central handle.

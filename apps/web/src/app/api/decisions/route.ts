@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { callerFromHeaders } from "@/lib/caller";
 import { z } from "zod";
 import { RecordDecisionInputSchema, recordDecision } from "@/lib/decisions";
 import { IngestError } from "@/lib/paste";
@@ -17,10 +18,11 @@ function errorResponse(
 
 export async function POST(request: Request): Promise<NextResponse> {
   const h = await headers();
-  const userId = h.get("x-user-id");
-  if (!userId) {
+  const caller = callerFromHeaders(h);
+  if (!caller) {
     return errorResponse("unauthorized", "Missing user context.", 401);
   }
+  const { userId, clientScope } = caller;
 
   let body: unknown;
   try {
@@ -40,7 +42,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const result = await recordDecision(userId, parsed.data);
+    const result = await recordDecision(userId, parsed.data, { sessionId: null, clientScope });
     return NextResponse.json({ ok: true, data: result });
   } catch (err) {
     if (err instanceof IngestError) {

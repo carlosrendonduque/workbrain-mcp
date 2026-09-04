@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { extractBearerKey, hashApiKey } from "./lib/auth";
+import { CLIENT_SCOPE_HEADER } from "./lib/caller";
 import { db, schema } from "./lib/db";
 import { SESSION_COOKIE, verifySession } from "./lib/session";
 
@@ -34,7 +35,11 @@ async function handleApi(request: NextRequest): Promise<NextResponse> {
 
   const keyHash = await hashApiKey(rawKey);
   const rows = await db
-    .select({ id: schema.apiKeys.id, userId: schema.apiKeys.userId })
+    .select({
+      id: schema.apiKeys.id,
+      userId: schema.apiKeys.userId,
+      clientId: schema.apiKeys.clientId,
+    })
     .from(schema.apiKeys)
     .where(eq(schema.apiKeys.keyHash, keyHash))
     .limit(1);
@@ -51,6 +56,10 @@ async function handleApi(request: NextRequest): Promise<NextResponse> {
 
   const headers = new Headers(request.headers);
   headers.set("x-user-id", row.userId);
+  // A key pinned to one client carries that client's id from here on. The
+  // header is deleted first so a caller cannot forge it by sending their own.
+  headers.delete(CLIENT_SCOPE_HEADER);
+  if (row.clientId) headers.set(CLIENT_SCOPE_HEADER, row.clientId);
 
   return NextResponse.next({ request: { headers } });
 }

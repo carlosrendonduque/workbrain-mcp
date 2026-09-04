@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { type WorkbrainDb, schema } from "./db";
-import { TenancyError, resolveProjectContext } from "./tenancy";
+import { type ClientScope, TenancyError, resolveProjectContext } from "./tenancy";
 
 export interface DocumentProgress {
   analysis: string | null;
@@ -75,6 +75,7 @@ export async function getDocumentDetail(
   clientSlug: string,
   projectSlug: string,
   ref: string,
+  scope: ClientScope,
 ): Promise<DocumentDetail | null> {
   const refIsUuid = UUID_PATTERN.test(ref);
   const refMatch = refIsUuid ? eq(schema.documents.id, ref) : eq(schema.documents.externalId, ref);
@@ -84,7 +85,7 @@ export async function getDocumentDetail(
   // a lookup plus a scoped query.
   let project: Awaited<ReturnType<typeof resolveProjectContext>>;
   try {
-    project = await resolveProjectContext(userId, projectSlug);
+    project = await resolveProjectContext(userId, projectSlug, scope);
   } catch (err) {
     if (err instanceof TenancyError) return null;
     throw err;

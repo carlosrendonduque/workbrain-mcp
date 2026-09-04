@@ -62,13 +62,17 @@ export async function addLinkAction(
   }
 
   try {
-    const result = await linkDocuments(session.userId, {
-      projectSlug: route.projectSlug,
-      fromPath: route.thisDocPath,
-      toExternalId,
-      linkType,
-      note,
-    });
+    const result = await linkDocuments(
+      session.userId,
+      {
+        projectSlug: route.projectSlug,
+        fromPath: route.thisDocPath,
+        toExternalId,
+        linkType,
+        note,
+      },
+      { sessionId: null, clientScope: null },
+    );
     revalidatePath(projectPath(route.clientSlug, route.projectSlug, route.ref));
     return {
       status: "success",
@@ -108,13 +112,17 @@ export async function markSupersededAction(
   }
 
   try {
-    const link = await linkDocuments(session.userId, {
-      projectSlug: route.projectSlug,
-      fromExternalId,
-      toPath: route.thisDocPath,
-      linkType: "supersedes",
-      note: "marked as superseded from webapp",
-    });
+    const link = await linkDocuments(
+      session.userId,
+      {
+        projectSlug: route.projectSlug,
+        fromExternalId,
+        toPath: route.thisDocPath,
+        linkType: "supersedes",
+        note: "marked as superseded from webapp",
+      },
+      { sessionId: null, clientScope: null },
+    );
 
     if (alsoArchive) {
       if (!documentId) {
@@ -124,7 +132,7 @@ export async function markSupersededAction(
           code: "missing_doc_id",
         };
       }
-      await archiveDocument(session.userId, documentId);
+      await archiveDocument(session.userId, documentId, null);
     }
 
     revalidatePath(projectPath(route.clientSlug, route.projectSlug, route.ref));
@@ -162,9 +170,9 @@ export async function archiveAction(
 
   try {
     if (op === "archive") {
-      await archiveDocument(session.userId, documentId);
+      await archiveDocument(session.userId, documentId, null);
     } else if (op === "unarchive") {
-      await unarchiveDocument(session.userId, documentId);
+      await unarchiveDocument(session.userId, documentId, null);
     } else {
       return { status: "error", message: `Unknown op: ${op}`, code: "bad_op" };
     }

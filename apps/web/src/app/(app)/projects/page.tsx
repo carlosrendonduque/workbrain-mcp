@@ -8,7 +8,7 @@ const NUMBER = new Intl.NumberFormat("en-US");
 
 export default async function ProjectsIndexPage() {
   const session = await requireSession();
-  const projects = await getProjectsForUser(session.userId);
+  const projects = await getProjectsForUser(session.userId, null);
 
   return (
     <div className="px-8 py-8">
@@ -16,8 +16,8 @@ export default async function ProjectsIndexPage() {
         <div>
           <h1 className="text-2xl font-semibold text-zinc-100">Projects</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Pick a project to browse its corpus, ingest a document or compose context.
-            Each project is fully isolated from the others.
+            Pick a project to browse its corpus, ingest a document or compose context. Each project
+            is fully isolated from the others.
           </p>
         </div>
         <Link
@@ -30,8 +30,8 @@ export default async function ProjectsIndexPage() {
 
       {projects.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-6 text-sm text-zinc-400">
-          No projects yet. Click <span className="text-zinc-200">+ New project</span> above
-          to create your first one.
+          No projects yet. Click <span className="text-zinc-200">+ New project</span> above to
+          create your first one.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
@@ -48,10 +48,7 @@ export default async function ProjectsIndexPage() {
               {projects.map((p) => (
                 <tr key={p.projectId} className="group hover:bg-zinc-900/40">
                   <td className="px-5 py-3">
-                    <Link
-                      href={`/projects/${p.clientSlug}/${p.projectSlug}`}
-                      className="block"
-                    >
+                    <Link href={`/projects/${p.clientSlug}/${p.projectSlug}`} className="block">
                       <div className="font-medium text-zinc-100 group-hover:text-indigo-300">
                         {p.projectName}
                       </div>

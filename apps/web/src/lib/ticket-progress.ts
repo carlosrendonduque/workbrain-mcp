@@ -4,7 +4,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { type WorkbrainDb, schema } from "./db";
-import { TenancyError, resolveProjectContext } from "./tenancy";
+import { type ClientScope, TenancyError, resolveProjectContext } from "./tenancy";
 
 export const TICKET_STAGES = ["analysis", "design", "build", "tests", "deployment"] as const;
 export type TicketStage = (typeof TICKET_STAGES)[number];
@@ -67,8 +67,9 @@ async function resolveOwnedTicket(
   userId: string,
   projectSlug: string,
   externalId: string,
+  scope: ClientScope,
 ): Promise<OwnedTicket> {
-  const project = await resolveProjectContext(userId, projectSlug).catch((err: unknown) => {
+  const project = await resolveProjectContext(userId, projectSlug, scope).catch((err: unknown) => {
     if (err instanceof TenancyError) {
       throw new TicketProgressError(err.code, err.message, err.status);
     }
@@ -128,8 +129,9 @@ export interface SetTicketProgressResult {
 export async function setTicketProgress(
   userId: string,
   input: SetTicketProgressInput,
+  scope: ClientScope,
 ): Promise<SetTicketProgressResult> {
-  const ticket = await resolveOwnedTicket(userId, input.projectSlug, input.externalId);
+  const ticket = await resolveOwnedTicket(userId, input.projectSlug, input.externalId, scope);
   if (ticket.type !== "ticket") {
     throw new TicketProgressError(
       "not_a_ticket",
@@ -168,8 +170,9 @@ export async function getTicketProgress(
   userId: string,
   projectSlug: string,
   externalId: string,
+  scope: ClientScope,
 ): Promise<GetTicketProgressResult> {
-  const ticket = await resolveOwnedTicket(userId, projectSlug, externalId);
+  const ticket = await resolveOwnedTicket(userId, projectSlug, externalId, scope);
   return {
     externalId,
     title: ticket.title,

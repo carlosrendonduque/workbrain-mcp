@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { type WorkbrainDb, schema } from "./db";
-import { TenancyError, corpusMapForUser, resolveProjectContext } from "./tenancy";
+import { type ClientScope, TenancyError, corpusMapForUser, resolveProjectContext } from "./tenancy";
 
 export class CurationError extends Error {
   readonly code: string;
@@ -35,8 +35,12 @@ interface OwnedDocument {
  * that live there. That scoping is what proves ownership now that documents
  * and projects can no longer be joined.
  */
-async function resolveOwnedDocument(userId: string, documentId: string): Promise<OwnedDocument> {
-  const map = await corpusMapForUser(userId);
+async function resolveOwnedDocument(
+  userId: string,
+  documentId: string,
+  scope: ClientScope,
+): Promise<OwnedDocument> {
+  const map = await corpusMapForUser(userId, scope);
 
   for (const target of map.targets) {
     if (target.projectIds.length === 0) continue;
@@ -62,16 +66,24 @@ async function resolveOwnedDocument(userId: string, documentId: string): Promise
   throw new CurationError("document_not_found", `Document ${documentId} not found`, 404);
 }
 
-export async function archiveDocument(userId: string, documentId: string): Promise<void> {
-  const owned = await resolveOwnedDocument(userId, documentId);
+export async function archiveDocument(
+  userId: string,
+  documentId: string,
+  scope: ClientScope,
+): Promise<void> {
+  const owned = await resolveOwnedDocument(userId, documentId, scope);
   await owned.corpusDb
     .update(schema.documents)
     .set({ status: ARCHIVED_STATUS, updatedAt: sql`now()` })
     .where(eq(schema.documents.id, documentId));
 }
 
-export async function unarchiveDocument(userId: string, documentId: string): Promise<void> {
-  const owned = await resolveOwnedDocument(userId, documentId);
+export async function unarchiveDocument(
+  userId: string,
+  documentId: string,
+  scope: ClientScope,
+): Promise<void> {
+  const owned = await resolveOwnedDocument(userId, documentId, scope);
   await owned.corpusDb
     .update(schema.documents)
     .set({ status: null, updatedAt: sql`now()` })
@@ -102,17 +114,19 @@ export interface ArchiveDocumentResult {
 export async function archiveDocumentByRef(
   userId: string,
   input: ArchiveDocumentInput,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<ArchiveDocumentResult> {
   const start = Date.now();
 
   // Resolving the project both proves ownership and yields the database and
   // the project id the audit row needs — the separate project lookup this
   // function used to do at the end is now redundant.
-  const project = await resolveProjectContext(userId, input.projectSlug).catch((err: unknown) => {
-    if (err instanceof TenancyError) throw new CurationError(err.code, err.message, err.status);
-    throw err;
-  });
+  const project = await resolveProjectContext(userId, input.projectSlug, meta.clientScope).catch(
+    (err: unknown) => {
+      if (err instanceof TenancyError) throw new CurationError(err.code, err.message, err.status);
+      throw err;
+    },
+  );
   const corpusDb = project.corpusDb;
 
   const filters = [eq(schema.documents.projectId, project.projectId)];
