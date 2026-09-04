@@ -15,6 +15,7 @@ import { config } from "dotenv";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import type { WorkbrainDb } from "../src/lib/db";
+import { describeRouting } from "../src/lib/providers";
 import { CORPUS_TABLES, countCorpus } from "../src/lib/provisioning";
 
 config({ path: ".env.local" });
@@ -42,7 +43,9 @@ async function main(): Promise<void> {
       isolationMode: schema.clients.isolationMode,
       corpusDbUrlEnv: schema.clients.corpusDbUrlEnv,
       llmProvider: schema.clients.llmProvider,
+      llmConfig: schema.clients.llmConfig,
       embeddingProvider: schema.clients.embeddingProvider,
+      embeddingConfig: schema.clients.embeddingConfig,
       retentionDays: schema.clients.retentionDays,
     })
     .from(schema.clients)
@@ -62,7 +65,15 @@ async function main(): Promise<void> {
 
     console.log(`── ${client.slug}  (${client.name})`);
     console.log(`   projects   ${projects.map((p) => p.slug).join(", ") || "(none)"}`);
-    console.log(`   ai         llm=${client.llmProvider}  embeddings=${client.embeddingProvider}`);
+    // Where this client's text actually goes, resolved rather than reported
+    // from the column — a provider that cannot be constructed (missing
+    // credentials, uninstalled SDK) shows here instead of at 2am on an ingest.
+    const routing = describeRouting({ ...client, clientSlug: client.slug });
+    console.log(`   llm        ${routing.llm}`);
+    console.log(`   embeddings ${routing.embeddings}`);
+    if (routing.llm.startsWith("❌") || routing.embeddings.startsWith("❌")) {
+      problems += 1;
+    }
     console.log(
       `   retention  ${client.retentionDays === null ? "indefinite" : `${client.retentionDays} days`}`,
     );

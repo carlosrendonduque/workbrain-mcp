@@ -16,8 +16,8 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-  process.env.WB_ACME_DB = undefined;
-  process.env.WB_FBI_DB = undefined;
+  delete process.env.WB_ACME_DB;
+  delete process.env.WB_FBI_DB;
 });
 
 describe("corpusDbFor", () => {

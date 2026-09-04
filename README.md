@@ -248,6 +248,56 @@ Each dedicated database also holds a copy of its own `clients` row and its
 authoritative — they exist so the corpus tables' foreign keys resolve, and so
 a dedicated database is a coherent, restorable thing on its own.
 
+### Routing a client's AI through their own account
+
+Separating the databases answers *where is my data stored*. This answers *who
+sees it while you work on it* — and that is the question a bank's security
+team asks first, because the usual answer names a third party they never
+signed anything with.
+
+Two settings per client, both on the `clients` row:
+
+| Column | Values | What it means |
+|---|---|---|
+| `llm_provider` | `anthropic` (default) · `bedrock` | Classification and drafting go through our Anthropic account, or the client's own AWS |
+| `embedding_provider` | `voyage` (default) | Which account embeds the text |
+
+`llm_config` holds the non-secret settings and, as with the database, the
+**names** of the environment variables holding the credentials — never the
+credentials:
+
+```json
+{
+  "region": "ap-southeast-2",
+  "accessKeyIdEnv": "ACME_AWS_KEY",
+  "secretAccessKeyEnv": "ACME_AWS_SECRET",
+  "model": "claude-sonnet-4-6"
+}
+```
+
+With that, the answer to *"does my text reach Anthropic?"* becomes **no — it
+goes through your own AWS account, under the agreement you already have with
+AWS.** That is usually a much shorter conversation than adding a new
+subprocessor.
+
+Every failure here is a refusal, never a fallback: a missing credential, an
+uninstalled SDK (`vertex`, `foundry`) or an unknown provider raises rather
+than quietly using our account. See where each client currently points with
+`db:isolation`, which resolves the providers rather than reading the column,
+so a broken one surfaces there instead of mid-ingest.
+
+**Embeddings are the unfinished half.** Only Voyage is implemented, so a
+client whose LLM runs on Bedrock still has its text embedded through our
+Voyage account on every ingest. Setting `embedding_provider` to anything else
+refuses rather than silently falling back — the promise stays honest, but a
+fully self-contained scenario needs a Bedrock or Vertex embedding provider
+written.
+
+Every chunk records the model that produced its vector. Vectors from two
+different models are not comparable, so a corpus embedded by both is broken
+search with no error to point at; ingest refuses to mix them, which makes
+changing a client's embedding provider a deliberate re-index.
+
 ### Limiting an API key to one client
 
 A key can be pinned to a single client when you create it (Account → API

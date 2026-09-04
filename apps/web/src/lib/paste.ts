@@ -6,7 +6,7 @@ import { ClassifierError, type ClassifierUsage, classify } from "./classifier";
 import { buildDocumentPath, writeDocument } from "./corpus";
 import type { WorkbrainDb } from "./db";
 import { chunkMarkdown } from "./chunking";
-import { embed } from "./embeddings";
+import { assertConsistentEmbeddingModel, resolveEmbeddings, resolveLlm } from "./providers";
 import {
   type ClientScope,
   type ProjectContext,
@@ -247,7 +247,10 @@ export async function ingestPaste(
     // fallback, not a validator — explicit type from the caller is always honored.
     if (!input.type) {
       try {
-        const out = await classify(input.content);
+        // Through this client's provider, so a client routed to their own
+        // cloud account never has their text sent to ours for classification.
+        const llm = resolveLlm(projectInfo);
+        const out = await classify(input.content, { client: llm.client, model: llm.model });
         inferredType = out.result.type;
         inferredExternalId = out.result.externalId;
         inferredDate = out.result.detectedDate;
@@ -331,21 +334,30 @@ export async function ingestPaste(
     const chunks = chunkMarkdown(input.content);
     let chunkCount = 0;
     if (chunks.length > 0) {
-      const embeddings = await embed(
+      const embeddings = resolveEmbeddings(projectInfo);
+      // Refuse before writing anything, not after: vectors from two models
+      // are not comparable, so mixing them would leave search quietly wrong
+      // with nothing to point at.
+      await assertConsistentEmbeddingModel(
+        projectInfo.corpusDb,
+        projectInfo.projectId,
+        embeddings.model,
+      );
+      const vectors = await embeddings.embed(
         chunks.map((c) => c.text),
         "document",
       );
-      if (embeddings.length !== chunks.length) {
+      if (vectors.length !== chunks.length) {
         throw new IngestError(
           "embedding_mismatch",
-          `Expected ${chunks.length} embeddings, got ${embeddings.length}`,
+          `Expected ${chunks.length} embeddings, got ${vectors.length}`,
           500,
         );
       }
 
       const project = projectInfo;
       const chunkRows = chunks.map((chunk, i) => {
-        const embedding = embeddings[i];
+        const embedding = vectors[i];
         if (!embedding) {
           throw new IngestError("missing_embedding", `No embedding for chunk ${i}`, 500);
         }
@@ -358,6 +370,7 @@ export async function ingestPaste(
           text: chunk.text,
           tokenCount: chunk.tokenCount,
           embedding,
+          embeddingModel: embeddings.model,
         };
       });
 
