@@ -109,6 +109,14 @@ function classifierCostUsd(usage: ClassifierUsage): string {
   return cost.toFixed(6);
 }
 
+/**
+ * Free text to a filename-safe slug.
+ *
+ * This is where stripping accents belongs: a title is a label and may contain
+ * anything. It is NOT the same job as envVarNameForClient, which receives a
+ * slug that was already validated and rejects anything else rather than
+ * rewriting it.
+ */
 function slugifyTitle(title: string): string {
   const slug = title
     .toLowerCase()

@@ -10,32 +10,27 @@ import {
 } from "./provisioning";
 
 describe("envVarNameForClient", () => {
-  it("builds a shouty, valid env var name", () => {
-    expect(envVarNameForClient("acme")).toBe("WORKBRAIN_DB_ACME");
-  });
-
-  it("turns separators into underscores", () => {
-    expect(envVarNameForClient("acme-finance")).toBe("WORKBRAIN_DB_ACME_FINANCE");
-    expect(envVarNameForClient("acme.finance co")).toBe("WORKBRAIN_DB_ACME_FINANCE_CO");
-  });
-
-  it("handles a real client slug", () => {
+  it("builds a shouty env var name from a slug", () => {
     expect(envVarNameForClient("leozenit")).toBe("WORKBRAIN_DB_LEOZENIT");
   });
 
-  // Kept because client names in Colombia routinely carry accents, and an
-  // accented character in an environment variable name is not just ugly —
-  // it is invalid, so the client would be unreachable.
-  it("strips accents rather than emitting an invalid name", () => {
-    expect(envVarNameForClient("café-central")).toBe("WORKBRAIN_DB_CAFE_CENTRAL");
+  it("turns dashes into underscores", () => {
+    expect(envVarNameForClient("acme-finance")).toBe("WORKBRAIN_DB_ACME_FINANCE");
   });
 
-  it("never leaves a leading or trailing underscore", () => {
-    expect(envVarNameForClient("-acme-")).toBe("WORKBRAIN_DB_ACME");
+  // Slugs are validated as [a-z0-9-] before any client exists, so anything
+  // else arriving here means something upstream is broken. Rewriting it
+  // would produce a name that no longer matches the client it belongs to.
+  it("rejects a display name instead of quietly rewriting it", () => {
+    expect(() => envVarNameForClient("Café Central")).toThrow(/not a valid client slug/);
   });
 
-  it("falls back to a usable name when the slug has nothing to keep", () => {
-    expect(envVarNameForClient("---")).toBe("WORKBRAIN_DB_CLIENT");
+  it("rejects a slug with a leading or trailing dash", () => {
+    expect(() => envVarNameForClient("-acme-")).toThrow();
+  });
+
+  it("rejects an empty slug", () => {
+    expect(() => envVarNameForClient("")).toThrow();
   });
 });
 
