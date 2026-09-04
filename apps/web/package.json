@@ -27,6 +27,7 @@
     "corpus:demo": "tsx scripts/corpus-demo.ts"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.33.3",
     "@anthropic-ai/sdk": "^0.94.0",
     "@neondatabase/serverless": "^1.1.0",
     "@workbrain/shared": "workspace:*",

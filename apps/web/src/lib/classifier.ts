@@ -10,6 +10,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
+// Default only. Each client's provider decides the real model — on Bedrock
+// the same model carries an `anthropic.` prefix — so callers pass it in.
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 1024;
 
@@ -126,7 +128,15 @@ const TOOL: Anthropic.Tool = {
 };
 
 export interface ClassifyOptions {
-  client?: Anthropic;
+  /**
+   * The client to send this through. Comes from resolveLlm(), which decides
+   * whether the text goes to our Anthropic account or the client's own cloud
+   * account. Typed structurally because the Bedrock client is a different
+   * class with the same messages surface.
+   */
+  client?: Pick<Anthropic, "messages">;
+  /** Model id for that provider — Bedrock ids differ from first-party ones. */
+  model?: string;
 }
 
 export async function classify(
@@ -138,12 +148,13 @@ export async function classify(
   }
 
   const client = options.client ?? new Anthropic();
+  const model = options.model ?? MODEL;
   const start = Date.now();
 
   let response: Anthropic.Message;
   try {
     response = await client.messages.create({
-      model: MODEL,
+      model,
       max_tokens: MAX_TOKENS,
       thinking: { type: "disabled" },
       output_config: { effort: "low" },

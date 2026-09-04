@@ -243,6 +243,14 @@ export const chunks = pgTable(
     text: text("text").notNull(),
     tokenCount: integer("token_count").notNull(),
     embedding: vector("embedding", { dimensions: 1024 }).notNull(),
+    // Which model produced the vector above. Vectors from two different
+    // models are not comparable, so a corpus embedded by more than one is
+    // silently broken search — the scores are meaningless across the split
+    // and nothing else would reveal it. Recorded so it can be detected, and
+    // so switching a client's embedding provider is a visible re-index
+    // rather than a quiet corruption. NULL on rows written before this
+    // existed; those are all voyage-3-large.
+    embeddingModel: text("embedding_model"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [

@@ -78,6 +78,13 @@
       "when": 1788523294709,
       "tag": "0010_api_key_client_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788525601730,
+      "tag": "0011_chunk_embedding_model",
+      "breakpoints": true
     }
   ]
 }

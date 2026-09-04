@@ -4,7 +4,8 @@ import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { ARCHIVED_STATUS } from "./curation";
 import type { WorkbrainDb } from "./db";
-import { type RerankUsage, embed, rerank } from "./embeddings";
+import { type RerankUsage, rerank } from "./embeddings";
+import { resolveEmbeddings } from "./providers";
 import { TenancyError, resolveProjectContext } from "./tenancy";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -173,7 +174,11 @@ export async function search(
   let rerankCost: string | undefined;
 
   try {
-    const [queryVec] = await embed([input.query], "query");
+    // The query has to be embedded by the same model the corpus was, and
+    // through the same account — a query routed elsewhere would both leak the
+    // search text and return meaningless scores.
+    const embeddings = resolveEmbeddings(project);
+    const [queryVec] = await embeddings.embed([input.query], "query");
     if (!queryVec) {
       throw new SearchError("embedding_failed", "Voyage returned no embedding for query", 500);
     }
