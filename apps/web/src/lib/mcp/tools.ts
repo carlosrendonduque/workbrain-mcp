@@ -94,7 +94,7 @@ const ListDraftsInputSchema = z.object({
 const listDraftsTool: ToolDefinition<z.infer<typeof ListDraftsInputSchema>, DraftRow[]> = {
   name: "list_drafts",
   description:
-    "List drafts for the active user. Defaults to all projects + all statuses. Pass projectSlug to scope to one project. Pass status='pending' to show only what's waiting for review (the most common case). Use this when the user asks 'qué tengo en draft', 'muéstrame los drafts pendientes', or before suggesting a batch approval.",
+    "List drafts for the active user. Defaults to all projects + all statuses. Pass projectSlug to scope to one project. Pass status='pending' to show only what's waiting for review (the most common case). Use this when the user asks what is in draft or waiting for review, or before suggesting a batch approval.",
   schema: ListDraftsInputSchema,
   handler: (userId, input, ctx) => listDrafts(userId, ctx.clientScope, input),
 };
@@ -152,7 +152,7 @@ const rejectDraftTool: ToolDefinition<
 > = {
   name: "reject_draft",
   description:
-    "Discard a pending draft. The row stays in the database with status='rejected' (audit trail of what was proposed and not kept), but it never enters the corpus. Use when the user says 'no, descartá ese' or similar after reviewing a proposal.",
+    "Discard a pending draft. The row stays in the database with status='rejected' (audit trail of what was proposed and not kept), but it never enters the corpus. Use when the user declines a proposal after reviewing it.",
   schema: RejectDraftInputSchema,
   handler: async (userId, input, ctx) => {
     await rejectDraft(userId, input.draftId, {
@@ -177,7 +177,7 @@ const ListProjectsInputSchema = z.object({}).optional();
 const listProjectsTool: ToolDefinition<unknown, ProjectRow[]> = {
   name: "list_projects",
   description:
-    "List all projects the active user owns, with client name, slug, doc/chunk counts, persistence flag and last-invocation timestamp. Use this when the user opens a fresh chat and you don't yet know which project they want to work on — present the list as a numbered menu and ask them to pick. Also use when the user asks 'qué proyectos tengo' or similar discovery questions.",
+    "List all projects the active user owns, with client name, slug, doc/chunk counts, persistence flag and last-invocation timestamp. Use this when the user opens a fresh chat and you don't yet know which project they want to work on — present the list as a numbered menu and ask them to pick. Also use when the user asks which projects exist, or any similar discovery question.",
   schema: ListProjectsInputSchema as z.ZodTypeAny,
   handler: (userId, _input, ctx) => getProjectsForUser(userId, ctx.clientScope),
 };
