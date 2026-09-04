@@ -3,6 +3,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { schema } from "@workbrain/shared";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import {
+  type BedrockEmbeddingOptions,
+  defaultModelFor,
+  embedViaBedrock,
+} from "./bedrock-embeddings";
 import type { WorkbrainDb } from "./db";
 import { type VoyageInputType, embed as voyageEmbed } from "./embeddings";
 
@@ -171,6 +176,16 @@ const VoyageEmbeddingConfig = z.object({
   model: z.string().min(1).optional(),
 });
 
+const BedrockEmbeddingConfig = z.object({
+  region: z.string().min(1),
+  accessKeyIdEnv: z.string().min(1),
+  secretAccessKeyEnv: z.string().min(1),
+  sessionTokenEnv: z.string().min(1).optional(),
+  /** Defaults to Cohere: 1024 dimensions and 96 texts per call. */
+  model: z.string().min(1).optional(),
+  family: z.enum(["cohere", "titan"]).optional(),
+});
+
 export interface ResolvedEmbeddings {
   provider: string;
   /** Recorded on every chunk so a corpus embedded by two models is detectable. */
@@ -199,19 +214,52 @@ export function resolveEmbeddings(client: AiRouting): ResolvedEmbeddings {
       };
     }
 
-    case "bedrock":
+    case "bedrock": {
+      const parsed = BedrockEmbeddingConfig.safeParse(client.embeddingConfig ?? {});
+      if (!parsed.success) {
+        throw new ProviderConfigError(
+          "provider_config_invalid",
+          `Invalid bedrock embedding_config for client ${client.clientSlug ?? "(unknown)"}. ` +
+            "It needs region, accessKeyIdEnv and secretAccessKeyEnv. " +
+            parsed.error.message,
+        );
+      }
+      const cfg = parsed.data;
+      const model = cfg.model ?? defaultModelFor(cfg.family ?? "cohere");
+      const opts: BedrockEmbeddingOptions = {
+        region: cfg.region,
+        accessKeyId: readEnv(cfg.accessKeyIdEnv, "The AWS access key", client.clientSlug),
+        secretAccessKey: readEnv(cfg.secretAccessKeyEnv, "The AWS secret key", client.clientSlug),
+        ...(cfg.sessionTokenEnv
+          ? {
+              sessionToken: readEnv(
+                cfg.sessionTokenEnv,
+                "The AWS session token",
+                client.clientSlug,
+              ),
+            }
+          : {}),
+        model,
+      };
+      return {
+        provider: "bedrock",
+        model,
+        dimensions: EMBEDDING_DIMENSIONS,
+        embed: (texts, inputType) => embedViaBedrock(texts, inputType, opts),
+        destination: `Amazon Bedrock ${model}, ${cfg.region} (the client's own AWS account)`,
+      };
+    }
+
     case "vertex":
-      // The gap that makes a client's isolation incomplete, and the one that
-      // is easiest to forget because it is not a decision anyone makes — it
-      // happens on every single ingest. Routing the LLM through the client's
-      // account while the embeddings still leave through ours would make the
-      // promise false, so this refuses rather than quietly doing that.
+      // Declared and not installed, same as the Vertex LLM. Falling back to
+      // Voyage would send this client's content out through our account on
+      // every single document, which is the leak hardest to notice because
+      // nobody decides it — it just happens on every ingest.
       throw new ProviderConfigError(
         "embedding_provider_not_implemented",
-        `Client ${client.clientSlug ?? "(unknown)"} is configured for ${client.embeddingProvider} ` +
-          "embeddings, which is not implemented yet. Every ingest embeds text, so falling back to " +
-          "Voyage would send this client's content out through our account on every document. " +
-          "Set embedding_provider back to 'voyage' knowingly, or implement this provider.",
+        `Client ${client.clientSlug ?? "(unknown)"} is configured for vertex embeddings, which is ` +
+          "not implemented. Every ingest embeds text, so falling back to Voyage would send this " +
+          "client's content through our account on every document. Use bedrock or voyage.",
       );
 
     default:

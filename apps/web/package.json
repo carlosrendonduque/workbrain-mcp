@@ -29,6 +29,7 @@
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.33.3",
     "@anthropic-ai/sdk": "^0.94.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1126.0",
     "@neondatabase/serverless": "^1.1.0",
     "@workbrain/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",

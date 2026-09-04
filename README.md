@@ -286,12 +286,22 @@ than quietly using our account. See where each client currently points with
 `db:isolation`, which resolves the providers rather than reading the column,
 so a broken one surfaces there instead of mid-ingest.
 
-**Embeddings are the unfinished half.** Only Voyage is implemented, so a
-client whose LLM runs on Bedrock still has its text embedded through our
-Voyage account on every ingest. Setting `embedding_provider` to anything else
-refuses rather than silently falling back — the promise stays honest, but a
-fully self-contained scenario needs a Bedrock or Vertex embedding provider
-written.
+**Embeddings go through the same account.** Set `embedding_provider` to
+`bedrock` with the same shape of config and the text is embedded in the
+client's own AWS too — the half that is easiest to forget, because embedding
+is not a decision anyone makes, it happens on every document.
+
+Two models, and which one a client can use depends on what they have enabled:
+
+| | Dimensions | Texts per call | Notes |
+|---|---|---|---|
+| `cohere.embed-english-v3` (default) | 1024 | 96 | Native document/query distinction, matches how this corpus is searched |
+| `amazon.titan-embed-text-v2:0` | 1024 | **1** | A 200-chunk document becomes 200 round trips. Only if Cohere is not enabled in their account |
+
+Both return 1024 floats, which is what `chunks.embedding` holds; a model
+returning anything else is rejected before the insert rather than failing
+opaquely inside Postgres. Vertex embeddings are still unimplemented and
+refuse rather than falling back.
 
 Every chunk records the model that produced its vector. Vectors from two
 different models are not comparable, so a corpus embedded by both is broken
