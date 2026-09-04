@@ -1,7 +1,15 @@
-import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import { type SQL, and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { type InvocationMeta, recordInvocation } from "./audit";
-import { db, schema } from "./db";
+import { type WorkbrainDb, schema } from "./db";
+import {
+  type CorpusTarget,
+  type UserCorpusMap,
+  TenancyError,
+  corpusMapForUser,
+  fanOutCorpus,
+  resolveProjectContext,
+} from "./tenancy";
 import { type IngestPasteResult, ingestPaste } from "./paste";
 
 const DOCUMENT_TYPES = [
@@ -72,33 +80,34 @@ export interface DraftRow {
   reviewedAt: Date | string | null;
 }
 
-interface ResolvedProject {
-  projectId: string;
-  projectSlug: string;
-  clientSlug: string;
+async function resolveProject(userId: string, projectSlug: string) {
+  try {
+    return await resolveProjectContext(userId, projectSlug);
+  } catch (err) {
+    if (err instanceof TenancyError) throw new DraftError(err.code, err.message, err.status);
+    throw err;
+  }
 }
 
-async function resolveProject(userId: string, projectSlug: string): Promise<ResolvedProject> {
-  const rows = await db
-    .select({
-      projectId: schema.projects.id,
-      projectSlug: schema.projects.slug,
-      clientSlug: schema.clients.slug,
-    })
-    .from(schema.projects)
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(and(eq(schema.clients.userId, userId), eq(schema.projects.slug, projectSlug)))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row) {
-    throw new DraftError(
-      "project_not_found",
-      `Project ${projectSlug} not found for active user.`,
-      404,
-    );
-  }
-  return row;
+// Drafts live with the client, so every cross-project listing below asks each
+// database that holds any of this user's corpus and merges the answers. The
+// project ids come from the central registry, which is also what proves
+// ownership now that drafts and projects cannot be joined.
+async function draftScope(
+  userId: string,
+  projectSlug?: string,
+): Promise<{ map: UserCorpusMap; idsFor: (t: CorpusTarget) => string[] }> {
+  const map = await corpusMapForUser(userId);
+  const wanted = projectSlug
+    ? new Set(
+        [...map.labels.values()]
+          .filter((l) => l.projectSlug === projectSlug)
+          .map((l) => l.projectId),
+      )
+    : null;
+  const idsFor = (t: CorpusTarget): string[] =>
+    wanted ? t.projectIds.filter((id) => wanted.has(id)) : t.projectIds;
+  return { map, idsFor };
 }
 
 export interface CreatedDraft {
@@ -119,7 +128,7 @@ export async function proposeDocument(
     .filter((s) => s.length > 0)
     .filter((s) => s !== input.externalId);
 
-  const inserted = await db
+  const inserted = await project.corpusDb
     .insert(schema.draftDocuments)
     .values({
       projectId: project.projectId,
@@ -141,6 +150,7 @@ export async function proposeDocument(
   }
 
   await recordInvocation({
+    corpusDb: project.corpusDb,
     userId,
     projectId: project.projectId,
     operation: "propose_document",
@@ -166,11 +176,11 @@ export interface ListDraftsOpts {
 
 export async function listDrafts(userId: string, opts: ListDraftsOpts = {}): Promise<DraftRow[]> {
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+  const { map, idsFor } = await draftScope(userId, opts.projectSlug);
 
-  const filters = [eq(schema.clients.userId, userId)];
-  if (opts.projectSlug) filters.push(eq(schema.projects.slug, opts.projectSlug));
-  if (opts.status) filters.push(eq(schema.draftDocuments.status, opts.status));
-  if (opts.type) filters.push(eq(schema.draftDocuments.proposedType, opts.type));
+  const extra: SQL[] = [];
+  if (opts.status) extra.push(eq(schema.draftDocuments.status, opts.status));
+  if (opts.type) extra.push(eq(schema.draftDocuments.proposedType, opts.type));
   if (opts.query) {
     const pattern = `%${opts.query}%`;
     const queryFilter = or(
@@ -178,41 +188,49 @@ export async function listDrafts(userId: string, opts: ListDraftsOpts = {}): Pro
       ilike(schema.draftDocuments.proposedExternalId, pattern),
       ilike(schema.draftDocuments.proposedContent, pattern),
     );
-    if (queryFilter) filters.push(queryFilter);
+    if (queryFilter) extra.push(queryFilter);
   }
 
-  const rows = await db
-    .select({
-      draftId: schema.draftDocuments.id,
-      projectId: schema.draftDocuments.projectId,
-      projectSlug: schema.projects.slug,
-      projectName: schema.projects.name,
-      clientSlug: schema.clients.slug,
-      proposedType: schema.draftDocuments.proposedType,
-      proposedTitle: schema.draftDocuments.proposedTitle,
-      proposedContent: schema.draftDocuments.proposedContent,
-      proposedExternalId: schema.draftDocuments.proposedExternalId,
-      proposedFrontmatter: schema.draftDocuments.proposedFrontmatter,
-      proposalNote: schema.draftDocuments.proposalNote,
-      relatedExternalIds: schema.draftDocuments.relatedExternalIds,
-      status: schema.draftDocuments.status,
-      proposedBy: schema.draftDocuments.proposedBy,
-      approvedDocumentId: schema.draftDocuments.approvedDocumentId,
-      createdAt: schema.draftDocuments.createdAt,
-      reviewedAt: schema.draftDocuments.reviewedAt,
-    })
-    .from(schema.draftDocuments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.draftDocuments.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(and(...filters))
-    .orderBy(desc(schema.draftDocuments.createdAt))
-    .limit(limit);
+  const merged = await fanOutCorpus(map, async (t) => {
+    const ids = idsFor(t);
+    if (ids.length === 0) return [];
+    return await t.db
+      .select({
+        draftId: schema.draftDocuments.id,
+        projectId: schema.draftDocuments.projectId,
+        proposedType: schema.draftDocuments.proposedType,
+        proposedTitle: schema.draftDocuments.proposedTitle,
+        proposedContent: schema.draftDocuments.proposedContent,
+        proposedExternalId: schema.draftDocuments.proposedExternalId,
+        proposedFrontmatter: schema.draftDocuments.proposedFrontmatter,
+        proposalNote: schema.draftDocuments.proposalNote,
+        relatedExternalIds: schema.draftDocuments.relatedExternalIds,
+        status: schema.draftDocuments.status,
+        proposedBy: schema.draftDocuments.proposedBy,
+        approvedDocumentId: schema.draftDocuments.approvedDocumentId,
+        createdAt: schema.draftDocuments.createdAt,
+        reviewedAt: schema.draftDocuments.reviewedAt,
+      })
+      .from(schema.draftDocuments)
+      .where(and(inArray(schema.draftDocuments.projectId, ids), ...extra))
+      .orderBy(desc(schema.draftDocuments.createdAt))
+      .limit(limit);
+  });
 
-  return rows.map((r) => ({
-    ...r,
-    status: r.status as (typeof DRAFT_STATUS)[number],
-    relatedExternalIds: normalizeStringArray(r.relatedExternalIds),
-  }));
+  return merged
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, limit)
+    .map((r) => {
+      const label = map.labels.get(r.projectId);
+      return {
+        ...r,
+        projectSlug: label?.projectSlug ?? "",
+        projectName: label?.projectName ?? "",
+        clientSlug: label?.clientSlug ?? "",
+        status: r.status as (typeof DRAFT_STATUS)[number],
+        relatedExternalIds: normalizeStringArray(r.relatedExternalIds),
+      };
+    });
 }
 
 function normalizeStringArray(raw: unknown): string[] {
@@ -234,83 +252,107 @@ export async function getDraftTypeCounts(
   userId: string,
   opts: DraftTypeCountsOpts = {},
 ): Promise<DraftTypeCount[]> {
-  const filters = [eq(schema.clients.userId, userId)];
-  if (opts.projectSlug) filters.push(eq(schema.projects.slug, opts.projectSlug));
-  if (opts.status) filters.push(eq(schema.draftDocuments.status, opts.status));
+  const { map, idsFor } = await draftScope(userId, opts.projectSlug);
+  const extra = opts.status ? [eq(schema.draftDocuments.status, opts.status)] : [];
 
-  const rows = await db
-    .select({
-      type: schema.draftDocuments.proposedType,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(schema.draftDocuments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.draftDocuments.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(and(...filters))
-    .groupBy(schema.draftDocuments.proposedType)
-    .orderBy(desc(sql`count(*)`));
+  const rows = await fanOutCorpus(map, async (t) => {
+    const ids = idsFor(t);
+    if (ids.length === 0) return [];
+    return await t.db
+      .select({ type: schema.draftDocuments.proposedType, count: sql<number>`count(*)::int` })
+      .from(schema.draftDocuments)
+      .where(and(inArray(schema.draftDocuments.projectId, ids), ...extra))
+      .groupBy(schema.draftDocuments.proposedType);
+  });
 
-  return rows.map((r) => ({ type: r.type, count: r.count }));
+  const totals = new Map<string, number>();
+  for (const r of rows) totals.set(r.type, (totals.get(r.type) ?? 0) + r.count);
+  return [...totals.entries()]
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 export async function countPendingDraftsForUser(userId: string): Promise<number> {
-  const [row] = await db
-    .select({ n: count(schema.draftDocuments.id) })
-    .from(schema.draftDocuments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.draftDocuments.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(
-      and(eq(schema.clients.userId, userId), eq(schema.draftDocuments.status, "pending")),
-    );
-  return row?.n ?? 0;
+  const { map, idsFor } = await draftScope(userId);
+  const rows = await fanOutCorpus(map, async (t) => {
+    const ids = idsFor(t);
+    if (ids.length === 0) return [];
+    return await t.db
+      .select({ n: count(schema.draftDocuments.id) })
+      .from(schema.draftDocuments)
+      .where(
+        and(
+          inArray(schema.draftDocuments.projectId, ids),
+          eq(schema.draftDocuments.status, "pending"),
+        ),
+      );
+  });
+  return rows.reduce((acc, r) => acc + (r.n ?? 0), 0);
 }
 
-export async function countPendingDraftsByProject(
-  userId: string,
-): Promise<Map<string, number>> {
-  const rows = await db
-    .select({
-      projectId: schema.draftDocuments.projectId,
-      n: count(schema.draftDocuments.id),
-    })
-    .from(schema.draftDocuments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.draftDocuments.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(
-      and(eq(schema.clients.userId, userId), eq(schema.draftDocuments.status, "pending")),
-    )
-    .groupBy(schema.draftDocuments.projectId);
+export async function countPendingDraftsByProject(userId: string): Promise<Map<string, number>> {
+  const { map, idsFor } = await draftScope(userId);
+  const rows = await fanOutCorpus(map, async (t) => {
+    const ids = idsFor(t);
+    if (ids.length === 0) return [];
+    return await t.db
+      .select({ projectId: schema.draftDocuments.projectId, n: count(schema.draftDocuments.id) })
+      .from(schema.draftDocuments)
+      .where(
+        and(
+          inArray(schema.draftDocuments.projectId, ids),
+          eq(schema.draftDocuments.status, "pending"),
+        ),
+      )
+      .groupBy(schema.draftDocuments.projectId);
+  });
   const m = new Map<string, number>();
-  for (const r of rows) m.set(r.projectId, r.n);
+  for (const r of rows) m.set(r.projectId, (m.get(r.projectId) ?? 0) + r.n);
   return m;
 }
 
+// A bare draft id no longer says which database holds it, so ask each one,
+// scoped to the projects that live there — that scoping is what proves the
+// draft belongs to this user. Returns the handle it was found in so the
+// caller writes back to the same place.
 async function ownedDraft(userId: string, draftId: string) {
-  const rows = await db
-    .select({
-      draftId: schema.draftDocuments.id,
-      projectId: schema.draftDocuments.projectId,
-      projectSlug: schema.projects.slug,
-      proposedType: schema.draftDocuments.proposedType,
-      proposedTitle: schema.draftDocuments.proposedTitle,
-      proposedContent: schema.draftDocuments.proposedContent,
-      proposedExternalId: schema.draftDocuments.proposedExternalId,
-      proposedFrontmatter: schema.draftDocuments.proposedFrontmatter,
-      relatedExternalIds: schema.draftDocuments.relatedExternalIds,
-      status: schema.draftDocuments.status,
-    })
-    .from(schema.draftDocuments)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.draftDocuments.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(
-      and(eq(schema.clients.userId, userId), eq(schema.draftDocuments.id, draftId)),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) {
-    throw new DraftError("draft_not_found", `Draft ${draftId} not found.`, 404);
+  const map = await corpusMapForUser(userId);
+
+  for (const target of map.targets) {
+    if (target.projectIds.length === 0) continue;
+    const rows = await target.db
+      .select({
+        draftId: schema.draftDocuments.id,
+        projectId: schema.draftDocuments.projectId,
+        proposedType: schema.draftDocuments.proposedType,
+        proposedTitle: schema.draftDocuments.proposedTitle,
+        proposedContent: schema.draftDocuments.proposedContent,
+        proposedExternalId: schema.draftDocuments.proposedExternalId,
+        proposedFrontmatter: schema.draftDocuments.proposedFrontmatter,
+        relatedExternalIds: schema.draftDocuments.relatedExternalIds,
+        status: schema.draftDocuments.status,
+      })
+      .from(schema.draftDocuments)
+      .where(
+        and(
+          eq(schema.draftDocuments.id, draftId),
+          inArray(schema.draftDocuments.projectId, target.projectIds),
+        ),
+      )
+      .limit(1);
+
+    const row = rows[0];
+    if (row) {
+      const label = map.labels.get(row.projectId);
+      return {
+        ...row,
+        projectSlug: label?.projectSlug ?? "",
+        corpusDb: target.db as WorkbrainDb,
+      };
+    }
   }
-  return row;
+
+  throw new DraftError("draft_not_found", `Draft ${draftId} not found.`, 404);
 }
 
 export interface ApproveDraftEdits {
@@ -363,7 +405,7 @@ export async function approveDraft(
     meta,
   );
 
-  await db
+  await draft.corpusDb
     .update(schema.draftDocuments)
     .set({
       status: "approved",
@@ -383,12 +425,14 @@ export async function approveDraft(
   // link will be created when the OTHER draft is approved (its relations
   // include this one's id).
   await materializeRelations(
+    draft.corpusDb,
     draft.projectId,
     ingested.documentId,
     normalizeStringArray(draft.relatedExternalIds),
   );
 
   await recordInvocation({
+    corpusDb: draft.corpusDb,
     userId,
     projectId: draft.projectId,
     operation: "approve_draft",
@@ -405,6 +449,7 @@ export async function approveDraft(
 }
 
 async function materializeRelations(
+  corpusDb: WorkbrainDb,
   projectId: string,
   fromDocumentId: string,
   relatedExternalIds: string[],
@@ -412,7 +457,7 @@ async function materializeRelations(
   const ids = relatedExternalIds.filter((s) => s.length > 0);
   if (ids.length === 0) return;
 
-  const matches = await db
+  const matches = await corpusDb
     .select({
       id: schema.documents.id,
       externalId: schema.documents.externalId,
@@ -431,7 +476,7 @@ async function materializeRelations(
   // Avoid creating duplicate (from,to,related) links if user has approved
   // both ends already. Read existing forward AND backward edges first.
   const targetIds = matches.map((m) => m.id);
-  const existing = await db
+  const existing = await corpusDb
     .select({
       from: schema.documentLinks.fromDocumentId,
       to: schema.documentLinks.toDocumentId,
@@ -460,7 +505,7 @@ async function materializeRelations(
     }));
 
   if (toInsert.length > 0) {
-    await db.insert(schema.documentLinks).values(toInsert);
+    await corpusDb.insert(schema.documentLinks).values(toInsert);
   }
 }
 
@@ -478,12 +523,13 @@ export async function rejectDraft(
       409,
     );
   }
-  await db
+  await draft.corpusDb
     .update(schema.draftDocuments)
     .set({ status: "rejected", reviewedAt: sql`now()` })
     .where(eq(schema.draftDocuments.id, draftId));
 
   await recordInvocation({
+    corpusDb: draft.corpusDb,
     userId,
     projectId: draft.projectId,
     operation: "reject_draft",
@@ -533,7 +579,7 @@ export async function editDraft(
 
   if (Object.keys(updates).length === 0) return;
 
-  await db
+  await draft.corpusDb
     .update(schema.draftDocuments)
     .set(updates)
     .where(eq(schema.draftDocuments.id, draftId));

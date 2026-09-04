@@ -2,7 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
-import { db } from "./db";
+import type { WorkbrainDb } from "./db";
+import { TenancyError, resolveProjectContext } from "./tenancy";
 
 export const LINK_TYPES = [
   "depends_on",
@@ -62,20 +63,25 @@ interface ResolvedDoc {
   path: string;
 }
 
+// Ownership used to be proven by joining documents -> projects -> clients.
+// The project now lives centrally and the document in the client's database,
+// so ownership is established once by resolving the project, and the document
+// lookup is scoped to that project id inside the corpus database.
 async function resolveDocument(
-  userId: string,
+  corpusDb: WorkbrainDb,
+  projectId: string,
   projectSlug: string,
   by: { externalId?: string; path?: string },
   side: "from" | "to",
 ): Promise<ResolvedDoc> {
-  const conditions = [eq(schema.clients.userId, userId), eq(schema.projects.slug, projectSlug)];
+  const conditions = [eq(schema.documents.projectId, projectId)];
   if (by.externalId) {
     conditions.push(eq(schema.documents.externalId, by.externalId));
   } else if (by.path) {
     conditions.push(eq(schema.documents.path, by.path));
   }
 
-  const rows = await db
+  const rows = await corpusDb
     .select({
       id: schema.documents.id,
       projectId: schema.documents.projectId,
@@ -83,8 +89,6 @@ async function resolveDocument(
       path: schema.documents.path,
     })
     .from(schema.documents)
-    .innerJoin(schema.projects, eq(schema.documents.projectId, schema.projects.id))
-    .innerJoin(schema.clients, eq(schema.projects.clientId, schema.clients.id))
     .where(and(...conditions))
     .limit(1);
 
@@ -106,14 +110,22 @@ export async function linkDocuments(
   meta: InvocationMeta = {},
 ): Promise<LinkResult> {
   const start = Date.now();
+  const project = await resolveProjectContext(userId, input.projectSlug).catch((err: unknown) => {
+    if (err instanceof TenancyError) throw new LinkError(err.code, err.message, err.status);
+    throw err;
+  });
+  const corpusDb = project.corpusDb;
+
   const from = await resolveDocument(
-    userId,
+    corpusDb,
+    project.projectId,
     input.projectSlug,
     { externalId: input.fromExternalId, path: input.fromPath },
     "from",
   );
   const to = await resolveDocument(
-    userId,
+    corpusDb,
+    project.projectId,
     input.projectSlug,
     { externalId: input.toExternalId, path: input.toPath },
     "to",
@@ -136,7 +148,7 @@ export async function linkDocuments(
   // Idempotency: same (from, to, linkType) → return the existing row, do not
   // overwrite its note. If the caller wants to change the note they have to
   // delete + recreate (no update endpoint in Phase 2).
-  const existing = await db
+  const existing = await corpusDb
     .select({ id: schema.documentLinks.id, note: schema.documentLinks.note })
     .from(schema.documentLinks)
     .where(
@@ -151,6 +163,7 @@ export async function linkDocuments(
   const existingRow = existing[0];
   if (existingRow) {
     await recordInvocation({
+      corpusDb,
       userId,
       projectId: from.projectId,
       operation: "link_documents",
@@ -172,7 +185,7 @@ export async function linkDocuments(
     };
   }
 
-  const inserted = await db
+  const inserted = await corpusDb
     .insert(schema.documentLinks)
     .values({
       fromDocumentId: from.id,
@@ -188,6 +201,7 @@ export async function linkDocuments(
   }
 
   await recordInvocation({
+    corpusDb,
     userId,
     projectId: from.projectId,
     operation: "link_documents",

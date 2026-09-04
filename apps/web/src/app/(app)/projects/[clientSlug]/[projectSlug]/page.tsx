@@ -1,12 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { listDrafts } from "@/lib/drafts";
+import { corpusDbFor } from "@/lib/db";
 import { requireSession } from "@/lib/webapp-auth";
-import {
-  getProjectByPath,
-  getTypeCountsForProject,
-  listDocumentsForProject,
-} from "@/lib/projects";
+import { getProjectByPath, getTypeCountsForProject, listDocumentsForProject } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
 
@@ -67,9 +64,12 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
   const project = await getProjectByPath(session.userId, clientSlug, projectSlug);
   if (!project) notFound();
 
+  // Documents for this project live in its client's database.
+  const corpusDb = corpusDbFor(project);
+
   const [types, docs, pendingDrafts] = await Promise.all([
-    getTypeCountsForProject(project.projectId),
-    listDocumentsForProject(project.projectId, { type, query: q }),
+    getTypeCountsForProject(corpusDb, project.projectId),
+    listDocumentsForProject(corpusDb, project.projectId, { type, query: q }),
     listDrafts(session.userId, { projectSlug, status: "pending" }),
   ]);
   const pendingDraftsCount = pendingDrafts.length;
@@ -204,11 +204,7 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
           );
         })}
 
-        <form
-          action={basePath}
-          method="get"
-          className="ml-auto flex items-center gap-1"
-        >
+        <form action={basePath} method="get" className="ml-auto flex items-center gap-1">
           {type ? <input type="hidden" name="type" value={type} /> : null}
           <input
             type="search"
@@ -231,61 +227,57 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
       <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
         {docs.length === 0 ? (
           <p className="px-5 py-6 text-sm text-zinc-500">
-            {q || type
-              ? "No documents match this filter."
-              : "This project has no documents yet."}
+            {q || type ? "No documents match this filter." : "This project has no documents yet."}
           </p>
         ) : (
           <ul className="divide-y divide-zinc-800/70">
             {docs.map((d) => {
               const ref = d.externalId ?? d.documentId;
               return (
-              <li key={d.documentId} className="group px-5 py-3 hover:bg-zinc-900/40">
-                <div className="flex items-center gap-2">
-                  <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-300">
-                    {d.type}
-                  </span>
-                  {d.externalId ? (
+                <li key={d.documentId} className="group px-5 py-3 hover:bg-zinc-900/40">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-300">
+                      {d.type}
+                    </span>
+                    {d.externalId ? (
+                      <Link
+                        href={`${basePath}/${ref}`}
+                        className="font-mono text-xs text-indigo-300 hover:text-indigo-200"
+                      >
+                        {d.externalId}
+                      </Link>
+                    ) : null}
                     <Link
                       href={`${basePath}/${ref}`}
-                      className="font-mono text-xs text-indigo-300 hover:text-indigo-200"
+                      className="font-medium text-zinc-100 group-hover:text-indigo-200"
                     >
-                      {d.externalId}
+                      {d.title}
                     </Link>
+                    <span className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
+                      {d.progressPattern ? (
+                        <span
+                          title="progress pattern: A·D·B·T·Dep"
+                          className="font-mono text-[10px] text-zinc-500"
+                        >
+                          {d.progressPattern}
+                        </span>
+                      ) : null}
+                      {d.outgoingLinkCount > 0 || d.incomingLinkCount > 0 ? (
+                        <span title="outgoing → · incoming ←">
+                          {d.outgoingLinkCount}→ · ←{d.incomingLinkCount}
+                        </span>
+                      ) : null}
+                      <span>{formatRelative(d.createdAt)}</span>
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-zinc-500">
+                    <span className="font-mono">{d.path}</span>
+                    {d.status ? <span className="text-zinc-400">· {d.status}</span> : null}
+                  </div>
+                  {d.contentSnippet ? (
+                    <p className="mt-1.5 line-clamp-2 text-xs text-zinc-400">{d.contentSnippet}</p>
                   ) : null}
-                  <Link
-                    href={`${basePath}/${ref}`}
-                    className="font-medium text-zinc-100 group-hover:text-indigo-200"
-                  >
-                    {d.title}
-                  </Link>
-                  <span className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
-                    {d.progressPattern ? (
-                      <span
-                        title="progress pattern: A·D·B·T·Dep"
-                        className="font-mono text-[10px] text-zinc-500"
-                      >
-                        {d.progressPattern}
-                      </span>
-                    ) : null}
-                    {d.outgoingLinkCount > 0 || d.incomingLinkCount > 0 ? (
-                      <span title="outgoing → · incoming ←">
-                        {d.outgoingLinkCount}→ · ←{d.incomingLinkCount}
-                      </span>
-                    ) : null}
-                    <span>{formatRelative(d.createdAt)}</span>
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-3 text-xs text-zinc-500">
-                  <span className="font-mono">{d.path}</span>
-                  {d.status ? <span className="text-zinc-400">· {d.status}</span> : null}
-                </div>
-                {d.contentSnippet ? (
-                  <p className="mt-1.5 line-clamp-2 text-xs text-zinc-400">
-                    {d.contentSnippet}
-                  </p>
-                ) : null}
-              </li>
+                </li>
               );
             })}
           </ul>

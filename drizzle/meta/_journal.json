@@ -64,6 +64,13 @@
       "when": 1778220157287,
       "tag": "0008_concerned_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788520765499,
+      "tag": "0009_per_client_isolation",
+      "breakpoints": true
     }
   ]
 }

@@ -87,6 +87,22 @@ export const signupTokens = pgTable(
 // -----------------------------
 // Tenancy
 // -----------------------------
+// Where a client's corpus lives. "shared" keeps it in the central database
+// alongside other shared clients (separation enforced inside); "dedicated"
+// puts it in a database of its own, so the answer to "is my data in the same
+// database as your other clients?" is no.
+export const ISOLATION_MODES = ["shared", "dedicated"] as const;
+export type IsolationMode = (typeof ISOLATION_MODES)[number];
+
+// Which account the client's text is processed through. "anthropic"/"voyage"
+// mean our own keys; the cloud providers mean the client's own account, where
+// they are the data processor and Anthropic never receives the content.
+export const LLM_PROVIDERS = ["anthropic", "bedrock", "vertex", "foundry"] as const;
+export type LlmProvider = (typeof LLM_PROVIDERS)[number];
+
+export const EMBEDDING_PROVIDERS = ["voyage", "bedrock", "vertex"] as const;
+export type EmbeddingProvider = (typeof EMBEDDING_PROVIDERS)[number];
+
 export const clients = pgTable(
   "clients",
   {
@@ -96,6 +112,26 @@ export const clients = pgTable(
       .references(() => users.id),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
+
+    // --- Isolation scenario -------------------------------------------
+    // These six columns are the whole per-client policy. Everything that
+    // touches this client's data reads them to decide where the data lives
+    // and which account processes it. Defaults reproduce today's behaviour
+    // exactly, so existing rows keep working with no migration of content.
+    isolationMode: text("isolation_mode").notNull().default("shared"),
+    // Name of the environment variable holding the dedicated connection
+    // string — NOT the connection string itself. Secrets stay in the
+    // deployment environment; the database only records which one to read.
+    corpusDbUrlEnv: text("corpus_db_url_env"),
+    llmProvider: text("llm_provider").notNull().default("anthropic"),
+    // Non-secret provider settings (region, project id, the env var name to
+    // read credentials from). Never store credentials here.
+    llmConfig: jsonb("llm_config").notNull().default({}),
+    embeddingProvider: text("embedding_provider").notNull().default("voyage"),
+    embeddingConfig: jsonb("embedding_config").notNull().default({}),
+    // NULL means keep indefinitely. Set it when a contract caps retention.
+    retentionDays: integer("retention_days"),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [index("clients_user_slug_idx").on(t.userId, t.slug)],
@@ -249,11 +285,7 @@ export const invocations = pgTable(
     index("invocations_project_idx").on(t.projectId),
     index("invocations_created_at_idx").on(t.createdAt),
     index("invocations_session_idx").on(t.sessionId),
-    index("invocations_project_kind_created_idx").on(
-      t.projectId,
-      t.activityKind,
-      t.createdAt,
-    ),
+    index("invocations_project_kind_created_idx").on(t.projectId, t.activityKind, t.createdAt),
   ],
 );
 

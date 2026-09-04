@@ -3,8 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { getCanonDomainById, type MergedCanon, mergeCanon } from "./canon-domains";
-import { db } from "./db";
+import type { WorkbrainDb } from "./db";
 import { type SearchChunk, search } from "./search";
+import { type ProjectContext, TenancyError, resolveProjectContext } from "./tenancy";
 
 export const ComposeContextInputSchema = z
   .object({
@@ -185,51 +186,24 @@ Inviolable rules:
 5. For drafts directed at stakeholders, respect the indicated communication_style. Do not improvise tone.${closing}`;
 }
 
-interface ResolvedProject {
-  projectId: string;
-  projectSlug: string;
-  projectName: string;
-  clientId: string;
-  clientSlug: string;
-  clientName: string;
-  conventions: string | null;
-  guidelines: string | null;
-  architecture: string | null;
-  domainId: string | null;
-}
-
-async function resolveProject(userId: string, projectSlug: string): Promise<ResolvedProject> {
-  const rows = await db
-    .select({
-      projectId: schema.projects.id,
-      projectSlug: schema.projects.slug,
-      projectName: schema.projects.name,
-      clientId: schema.clients.id,
-      clientSlug: schema.clients.slug,
-      clientName: schema.clients.name,
-      conventions: schema.projects.conventions,
-      guidelines: schema.projects.guidelines,
-      architecture: schema.projects.architecture,
-      domainId: schema.projects.domainId,
-    })
-    .from(schema.projects)
-    .innerJoin(schema.clients, eq(schema.projects.clientId, schema.clients.id))
-    .where(and(eq(schema.clients.userId, userId), eq(schema.projects.slug, projectSlug)))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row) {
-    throw new ComposeError(
-      "project_not_found",
-      `Project not found for active user: ${projectSlug}`,
-      404,
-    );
+// The project plus the database holding its corpus. Tenancy failures are
+// re-thrown as ComposeError so the API contract (project_not_found -> 404)
+// is unchanged.
+async function resolveProject(userId: string, projectSlug: string): Promise<ProjectContext> {
+  try {
+    return await resolveProjectContext(userId, projectSlug);
+  } catch (err) {
+    if (err instanceof TenancyError) throw new ComposeError(err.code, err.message, err.status);
+    throw err;
   }
-  return row;
 }
 
-async function loadFocus(projectId: string, externalId: string): Promise<FocusDocument | null> {
-  const rows = await db
+async function loadFocus(
+  corpusDb: WorkbrainDb,
+  projectId: string,
+  externalId: string,
+): Promise<FocusDocument | null> {
+  const rows = await corpusDb
     .select({
       documentId: schema.documents.id,
       path: schema.documents.path,
@@ -258,8 +232,11 @@ async function loadFocus(projectId: string, externalId: string): Promise<FocusDo
   };
 }
 
-async function loadLinkedDocuments(focusId: string): Promise<LinkedDocument[]> {
-  const rows = await db
+async function loadLinkedDocuments(
+  corpusDb: WorkbrainDb,
+  focusId: string,
+): Promise<LinkedDocument[]> {
+  const rows = await corpusDb
     .select({
       documentId: schema.documents.id,
       type: schema.documents.type,
@@ -276,8 +253,11 @@ async function loadLinkedDocuments(focusId: string): Promise<LinkedDocument[]> {
   return rows;
 }
 
-async function loadStakeholders(projectId: string): Promise<StakeholderInScope[]> {
-  const rows = await db
+async function loadStakeholders(
+  corpusDb: WorkbrainDb,
+  projectId: string,
+): Promise<StakeholderInScope[]> {
+  const rows = await corpusDb
     .select({
       name: schema.stakeholders.name,
       role: schema.stakeholders.role,
@@ -293,14 +273,14 @@ async function loadStakeholders(projectId: string): Promise<StakeholderInScope[]
 // block and an identical instructions preamble.
 async function loadCanonBundle(
   userId: string,
-  project: ResolvedProject,
+  project: ProjectContext,
   mode: "compose" | "canon",
 ): Promise<{
   mergedCanon: MergedCanon;
   stakeholders: StakeholderInScope[];
   instructionsForAgent: string;
 }> {
-  const stakeholders = await loadStakeholders(project.projectId);
+  const stakeholders = await loadStakeholders(project.corpusDb, project.projectId);
   const domainCanon = project.domainId ? await getCanonDomainById(userId, project.domainId) : null;
   const mergedCanon = mergeCanon(
     {
@@ -337,6 +317,7 @@ export async function getCanon(
   );
 
   await recordInvocation({
+    corpusDb: project.corpusDb,
     userId,
     projectId: project.projectId,
     operation: "get_canon",
@@ -375,7 +356,7 @@ export async function composeContext(
 
   try {
     if (input.focusExternalId) {
-      focus = await loadFocus(project.projectId, input.focusExternalId);
+      focus = await loadFocus(project.corpusDb, project.projectId, input.focusExternalId);
       if (!focus) {
         throw new ComposeError(
           "focus_not_found",
@@ -415,7 +396,7 @@ export async function composeContext(
     // Linked documents (only when focus is present).
     let linkedFlat: LinkedDocument[] = [];
     if (focus) {
-      linkedFlat = await loadLinkedDocuments(focus.documentId);
+      linkedFlat = await loadLinkedDocuments(project.corpusDb, focus.documentId);
     }
     const linked: Record<string, LinkedDocument[]> = {};
     for (const doc of linkedFlat) {
@@ -458,6 +439,7 @@ export async function composeContext(
     };
 
     await recordInvocation({
+      corpusDb: project.corpusDb,
       userId,
       projectId: project.projectId,
       operation: "compose_context",
@@ -477,6 +459,7 @@ export async function composeContext(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await recordInvocation({
+      corpusDb: project.corpusDb,
       userId,
       projectId: project.projectId,
       operation: "compose_context",

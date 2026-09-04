@@ -1,7 +1,7 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { db, schema } from "@/lib/db";
+import { type WorkbrainDb, corpusDbFor, schema } from "@/lib/db";
 import { getProjectByPath } from "@/lib/projects";
 import { requireSession } from "@/lib/webapp-auth";
 import { ComposeForm, type DocOption } from "./_components/compose-form";
@@ -12,8 +12,11 @@ interface PageProps {
   params: Promise<{ clientSlug: string; projectSlug: string }>;
 }
 
-async function listDocsWithExternalId(projectId: string): Promise<DocOption[]> {
-  const rows = await db
+async function listDocsWithExternalId(
+  corpusDb: WorkbrainDb,
+  projectId: string,
+): Promise<DocOption[]> {
+  const rows = await corpusDb
     .select({
       externalId: schema.documents.externalId,
       type: schema.documents.type,
@@ -23,8 +26,9 @@ async function listDocsWithExternalId(projectId: string): Promise<DocOption[]> {
     .where(and(eq(schema.documents.projectId, projectId), isNotNull(schema.documents.externalId)))
     .orderBy(desc(schema.documents.createdAt))
     .limit(500);
-  return rows
-    .filter((r): r is { externalId: string; type: string; title: string } => r.externalId !== null);
+  return rows.filter(
+    (r): r is { externalId: string; type: string; title: string } => r.externalId !== null,
+  );
 }
 
 export default async function ComposePage({ params }: PageProps) {
@@ -33,7 +37,7 @@ export default async function ComposePage({ params }: PageProps) {
   const project = await getProjectByPath(session.userId, clientSlug, projectSlug);
   if (!project) notFound();
 
-  const docs = await listDocsWithExternalId(project.projectId);
+  const docs = await listDocsWithExternalId(corpusDbFor(project), project.projectId);
   const projectBasePath = `/projects/${clientSlug}/${projectSlug}`;
 
   return (
@@ -55,9 +59,9 @@ export default async function ComposePage({ params }: PageProps) {
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">Compose context</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Build the structured bundle the IDE agent receives: canon, focus document,
-          linked documents grouped by type, RAG chunks (rerank-aware), stakeholders, and
-          the instructions block.
+          Build the structured bundle the IDE agent receives: canon, focus document, linked
+          documents grouped by type, RAG chunks (rerank-aware), stakeholders, and the instructions
+          block.
         </p>
       </header>
 
