@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ARCHIVED_STATUS } from "@/lib/curation";
-import { db, schema } from "@/lib/db";
+import { type WorkbrainDb, corpusDbFor, schema } from "@/lib/db";
 import { getDocumentDetail, getDocumentLinks, type DocumentLink } from "@/lib/documents";
 import { progressPattern } from "@/lib/ticket-progress";
 import { requireSession } from "@/lib/webapp-auth";
@@ -84,10 +84,11 @@ interface PageProps {
 }
 
 async function listLinkCandidates(
+  corpusDb: WorkbrainDb,
   projectId: string,
   excludeDocumentId: string,
 ): Promise<CandidateDoc[]> {
-  const rows = await db
+  const rows = await corpusDb
     .select({
       externalId: schema.documents.externalId,
       type: schema.documents.type,
@@ -115,9 +116,11 @@ export default async function DocumentDetailPage({ params }: PageProps) {
   const doc = await getDocumentDetail(session.userId, clientSlug, projectSlug, ref);
   if (!doc) notFound();
 
+  // Links and sibling documents live in the same database as the document.
+  const corpusDb = corpusDbFor(doc);
   const [links, candidates] = await Promise.all([
-    getDocumentLinks(doc.documentId),
-    listLinkCandidates(doc.projectId, doc.documentId),
+    getDocumentLinks(corpusDb, doc.documentId),
+    listLinkCandidates(corpusDb, doc.projectId, doc.documentId),
   ]);
 
   const projectBasePath = `/projects/${clientSlug}/${projectSlug}`;
@@ -180,37 +183,35 @@ export default async function DocumentDetailPage({ params }: PageProps) {
                 </span>
               </header>
               <ul className="divide-y divide-zinc-800/70">
-                {(["analysis", "design", "build", "tests", "deployment"] as const).map(
-                  (stage) => {
-                    const value = doc.progress[stage];
-                    const isOptional = stage === "analysis";
-                    return (
-                      <li key={stage} className="px-4 py-3 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
-                              value
-                                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                                : "border-zinc-700 bg-zinc-900 text-zinc-500"
-                            }`}
-                          >
-                            {stage}
+                {(["analysis", "design", "build", "tests", "deployment"] as const).map((stage) => {
+                  const value = doc.progress[stage];
+                  const isOptional = stage === "analysis";
+                  return (
+                    <li key={stage} className="px-4 py-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
+                            value
+                              ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                              : "border-zinc-700 bg-zinc-900 text-zinc-500"
+                          }`}
+                        >
+                          {stage}
+                        </span>
+                        {isOptional ? (
+                          <span className="text-[10px] uppercase tracking-wide text-zinc-600">
+                            optional
                           </span>
-                          {isOptional ? (
-                            <span className="text-[10px] uppercase tracking-wide text-zinc-600">
-                              optional
-                            </span>
-                          ) : null}
-                        </div>
-                        {value ? (
-                          <p className="mt-1.5 whitespace-pre-wrap text-zinc-300">{value}</p>
-                        ) : (
-                          <p className="mt-1.5 italic text-zinc-600">empty</p>
-                        )}
-                      </li>
-                    );
-                  },
-                )}
+                        ) : null}
+                      </div>
+                      {value ? (
+                        <p className="mt-1.5 whitespace-pre-wrap text-zinc-300">{value}</p>
+                      ) : (
+                        <p className="mt-1.5 italic text-zinc-600">empty</p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ) : null}

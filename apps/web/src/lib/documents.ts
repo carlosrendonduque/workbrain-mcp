@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "./db";
+import { type WorkbrainDb, schema } from "./db";
+import { TenancyError, resolveProjectContext } from "./tenancy";
 
 export interface DocumentProgress {
   analysis: string | null;
@@ -27,6 +28,8 @@ export interface DocumentDetail {
   clientId: string;
   clientSlug: string;
   clientName: string;
+  isolationMode: string;
+  corpusDbUrlEnv: string | null;
 }
 
 export interface DocumentLink {
@@ -74,11 +77,21 @@ export async function getDocumentDetail(
   ref: string,
 ): Promise<DocumentDetail | null> {
   const refIsUuid = UUID_PATTERN.test(ref);
-  const refMatch = refIsUuid
-    ? eq(schema.documents.id, ref)
-    : eq(schema.documents.externalId, ref);
+  const refMatch = refIsUuid ? eq(schema.documents.id, ref) : eq(schema.documents.externalId, ref);
 
-  const rows = await db
+  // The project and client come from the central registry; the document
+  // itself lives in the client's database, so the old three-way join is now
+  // a lookup plus a scoped query.
+  let project: Awaited<ReturnType<typeof resolveProjectContext>>;
+  try {
+    project = await resolveProjectContext(userId, projectSlug);
+  } catch (err) {
+    if (err instanceof TenancyError) return null;
+    throw err;
+  }
+  if (project.clientSlug !== clientSlug) return null;
+
+  const rows = await project.corpusDb
     .select({
       documentId: schema.documents.id,
       type: schema.documents.type,
@@ -91,24 +104,9 @@ export async function getDocumentDetail(
       progress: schema.documents.progress,
       createdAt: schema.documents.createdAt,
       updatedAt: schema.documents.updatedAt,
-      projectId: schema.projects.id,
-      projectSlug: schema.projects.slug,
-      projectName: schema.projects.name,
-      clientId: schema.clients.id,
-      clientSlug: schema.clients.slug,
-      clientName: schema.clients.name,
     })
     .from(schema.documents)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.documents.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(
-      and(
-        eq(schema.clients.userId, userId),
-        eq(schema.clients.slug, clientSlug),
-        eq(schema.projects.slug, projectSlug),
-        refMatch,
-      ),
-    )
+    .where(and(eq(schema.documents.projectId, project.projectId), refMatch))
     .limit(1);
 
   const row = rows[0];
@@ -116,6 +114,14 @@ export async function getDocumentDetail(
 
   return {
     ...row,
+    projectId: project.projectId,
+    projectSlug: project.projectSlug,
+    projectName: project.projectName,
+    clientId: project.clientId,
+    clientSlug: project.clientSlug,
+    clientName: project.clientName,
+    isolationMode: project.isolationMode,
+    corpusDbUrlEnv: project.corpusDbUrlEnv,
     frontmatter: isObjectRecord(row.frontmatter) ? row.frontmatter : {},
     progress: normalizeProgress(row.progress),
   };
@@ -126,9 +132,12 @@ export interface DocumentLinks {
   incoming: DocumentLink[];
 }
 
-export async function getDocumentLinks(documentId: string): Promise<DocumentLinks> {
+export async function getDocumentLinks(
+  corpusDb: WorkbrainDb,
+  documentId: string,
+): Promise<DocumentLinks> {
   const [outRows, inRows] = await Promise.all([
-    db
+    corpusDb
       .select({
         linkId: schema.documentLinks.id,
         linkType: schema.documentLinks.linkType,
@@ -144,7 +153,7 @@ export async function getDocumentLinks(documentId: string): Promise<DocumentLink
       .innerJoin(schema.documents, eq(schema.documents.id, schema.documentLinks.toDocumentId))
       .where(eq(schema.documentLinks.fromDocumentId, documentId))
       .orderBy(schema.documentLinks.linkType, schema.documents.externalId),
-    db
+    corpusDb
       .select({
         linkId: schema.documentLinks.id,
         linkType: schema.documentLinks.linkType,

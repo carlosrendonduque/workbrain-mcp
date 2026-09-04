@@ -1,7 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { type InvocationMeta, recordInvocation } from "./audit";
-import { db, schema } from "./db";
+import { type WorkbrainDb, schema } from "./db";
+import { TenancyError, corpusMapForUser, resolveProjectContext } from "./tenancy";
 
 export class CurationError extends Error {
   readonly code: string;
@@ -21,42 +22,57 @@ interface OwnedDocument {
   documentId: string;
   projectId: string;
   currentStatus: string | null;
+  /** The database the document was found in — subsequent writes must use it. */
+  corpusDb: WorkbrainDb;
 }
 
-async function resolveOwnedDocument(
-  userId: string,
-  documentId: string,
-): Promise<OwnedDocument> {
-  const rows = await db
-    .select({
-      documentId: schema.documents.id,
-      projectId: schema.documents.projectId,
-      currentStatus: schema.documents.status,
-    })
-    .from(schema.documents)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.documents.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(and(eq(schema.clients.userId, userId), eq(schema.documents.id, documentId)))
-    .limit(1);
+/**
+ * Find a document by id alone, when the caller has no project in hand (the
+ * webapp's archive buttons work this way).
+ *
+ * A bare document id no longer says which database holds it, so this asks
+ * each database that holds any of the user's corpus, scoped to the projects
+ * that live there. That scoping is what proves ownership now that documents
+ * and projects can no longer be joined.
+ */
+async function resolveOwnedDocument(userId: string, documentId: string): Promise<OwnedDocument> {
+  const map = await corpusMapForUser(userId);
 
-  const row = rows[0];
-  if (!row) {
-    throw new CurationError("document_not_found", `Document ${documentId} not found`, 404);
+  for (const target of map.targets) {
+    if (target.projectIds.length === 0) continue;
+    const rows = await target.db
+      .select({
+        documentId: schema.documents.id,
+        projectId: schema.documents.projectId,
+        currentStatus: schema.documents.status,
+      })
+      .from(schema.documents)
+      .where(
+        and(
+          eq(schema.documents.id, documentId),
+          inArray(schema.documents.projectId, target.projectIds),
+        ),
+      )
+      .limit(1);
+
+    const row = rows[0];
+    if (row) return { ...row, corpusDb: target.db };
   }
-  return row;
+
+  throw new CurationError("document_not_found", `Document ${documentId} not found`, 404);
 }
 
 export async function archiveDocument(userId: string, documentId: string): Promise<void> {
-  await resolveOwnedDocument(userId, documentId);
-  await db
+  const owned = await resolveOwnedDocument(userId, documentId);
+  await owned.corpusDb
     .update(schema.documents)
     .set({ status: ARCHIVED_STATUS, updatedAt: sql`now()` })
     .where(eq(schema.documents.id, documentId));
 }
 
 export async function unarchiveDocument(userId: string, documentId: string): Promise<void> {
-  await resolveOwnedDocument(userId, documentId);
-  await db
+  const owned = await resolveOwnedDocument(userId, documentId);
+  await owned.corpusDb
     .update(schema.documents)
     .set({ status: null, updatedAt: sql`now()` })
     .where(eq(schema.documents.id, documentId));
@@ -89,17 +105,24 @@ export async function archiveDocumentByRef(
   meta: InvocationMeta = {},
 ): Promise<ArchiveDocumentResult> {
   const start = Date.now();
-  const filters = [
-    eq(schema.clients.userId, userId),
-    eq(schema.projects.slug, input.projectSlug),
-  ];
+
+  // Resolving the project both proves ownership and yields the database and
+  // the project id the audit row needs — the separate project lookup this
+  // function used to do at the end is now redundant.
+  const project = await resolveProjectContext(userId, input.projectSlug).catch((err: unknown) => {
+    if (err instanceof TenancyError) throw new CurationError(err.code, err.message, err.status);
+    throw err;
+  });
+  const corpusDb = project.corpusDb;
+
+  const filters = [eq(schema.documents.projectId, project.projectId)];
   if (input.externalId) {
     filters.push(eq(schema.documents.externalId, input.externalId));
   } else if (input.documentId) {
     filters.push(eq(schema.documents.id, input.documentId));
   }
 
-  const rows = await db
+  const rows = await corpusDb
     .select({
       documentId: schema.documents.id,
       externalId: schema.documents.externalId,
@@ -107,8 +130,6 @@ export async function archiveDocumentByRef(
       currentStatus: schema.documents.status,
     })
     .from(schema.documents)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.documents.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
     .where(and(...filters))
     .limit(1);
 
@@ -121,27 +142,15 @@ export async function archiveDocumentByRef(
     );
   }
 
-  await db
+  await corpusDb
     .update(schema.documents)
     .set({ status: ARCHIVED_STATUS, updatedAt: sql`now()` })
     .where(eq(schema.documents.id, row.documentId));
 
-  // Look up projectId for the audit row.
-  const projectRows = await db
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(
-      and(
-        eq(schema.clients.userId, userId),
-        eq(schema.projects.slug, input.projectSlug),
-      ),
-    )
-    .limit(1);
-
   await recordInvocation({
+    corpusDb,
     userId,
-    projectId: projectRows[0]?.id ?? null,
+    projectId: project.projectId,
     operation: "archive_document",
     activityKind: "document_archived",
     targetExternalId: row.externalId,

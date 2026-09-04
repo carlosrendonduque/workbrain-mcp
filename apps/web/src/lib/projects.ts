@@ -1,5 +1,5 @@
 import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
-import { db, schema } from "./db";
+import { type WorkbrainDb, corpusDbFor, db, schema } from "./db";
 
 export interface ProjectOverview {
   projectSlug: string;
@@ -44,6 +44,8 @@ export async function getProjectOverview(
       defaultBranch: schema.projects.defaultBranch,
       clientSlug: schema.clients.slug,
       clientName: schema.clients.name,
+      isolationMode: schema.clients.isolationMode,
+      corpusDbUrlEnv: schema.clients.corpusDbUrlEnv,
     })
     .from(schema.projects)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
@@ -53,12 +55,16 @@ export async function getProjectOverview(
   const project = projectRows[0];
   if (!project) return null;
 
-  const [docCount] = await db
+  // Counts below read this client's content, which may live in its own
+  // database — never the central handle.
+  const corpusDb = corpusDbFor(project);
+
+  const [docCount] = await corpusDb
     .select({ n: sql<number>`count(*)::int` })
     .from(schema.documents)
     .where(eq(schema.documents.projectId, project.projectId));
 
-  const docsByType = await db
+  const docsByType = await corpusDb
     .select({
       type: schema.documents.type,
       n: sql<number>`count(*)::int`,
@@ -67,12 +73,12 @@ export async function getProjectOverview(
     .where(eq(schema.documents.projectId, project.projectId))
     .groupBy(schema.documents.type);
 
-  const [stakeholderCount] = await db
+  const [stakeholderCount] = await corpusDb
     .select({ n: sql<number>`count(*)::int` })
     .from(schema.stakeholders)
     .where(eq(schema.stakeholders.projectId, project.projectId));
 
-  const [draftCount] = await db
+  const [draftCount] = await corpusDb
     .select({ n: sql<number>`count(*)::int` })
     .from(schema.draftDocuments)
     .where(
@@ -82,7 +88,7 @@ export async function getProjectOverview(
       ),
     );
 
-  const recentDocs = await db
+  const recentDocs = await corpusDb
     .select({
       title: schema.documents.title,
       type: schema.documents.type,
@@ -94,7 +100,7 @@ export async function getProjectOverview(
     .orderBy(desc(schema.documents.createdAt))
     .limit(5);
 
-  const [lastInv] = await db
+  const [lastInv] = await corpusDb
     .select({
       lastAt: sql<Date | null>`max(${schema.invocations.createdAt})`,
     })
@@ -213,9 +219,7 @@ export async function createProject(
         clientSlug: schema.clients.slug,
       })
       .from(schema.clients)
-      .where(
-        and(eq(schema.clients.id, input.existingClientId), eq(schema.clients.userId, userId)),
-      )
+      .where(and(eq(schema.clients.id, input.existingClientId), eq(schema.clients.userId, userId)))
       .limit(1);
     const row = rows[0];
     if (!row) {
@@ -237,12 +241,7 @@ export async function createProject(
     const existing = await db
       .select({ id: schema.clients.id })
       .from(schema.clients)
-      .where(
-        and(
-          eq(schema.clients.userId, userId),
-          eq(schema.clients.slug, input.newClientSlug),
-        ),
-      )
+      .where(and(eq(schema.clients.userId, userId), eq(schema.clients.slug, input.newClientSlug)))
       .limit(1);
     if (existing[0]) {
       throw new ProjectError(
@@ -272,9 +271,7 @@ export async function createProject(
   const dupe = await db
     .select({ id: schema.projects.id })
     .from(schema.projects)
-    .where(
-      and(eq(schema.projects.clientId, clientId), eq(schema.projects.slug, input.projectSlug)),
-    )
+    .where(and(eq(schema.projects.clientId, clientId), eq(schema.projects.slug, input.projectSlug)))
     .limit(1);
   if (dupe[0]) {
     throw new ProjectError(
@@ -290,12 +287,7 @@ export async function createProject(
   const domainRows = await db
     .select({ id: schema.canonDomains.id })
     .from(schema.canonDomains)
-    .where(
-      and(
-        eq(schema.canonDomains.id, input.domainId),
-        eq(schema.canonDomains.userId, userId),
-      ),
-    )
+    .where(and(eq(schema.canonDomains.id, input.domainId), eq(schema.canonDomains.userId, userId)))
     .limit(1);
   if (!domainRows[0]) {
     throw new ProjectError(
@@ -336,6 +328,8 @@ export interface ProjectDetail {
   domainName: string | null;
   documentCount: number;
   chunkCount: number;
+  isolationMode: string;
+  corpusDbUrlEnv: string | null;
 }
 
 export async function setProjectDomain(
@@ -348,12 +342,7 @@ export async function setProjectDomain(
     .select({ id: schema.projects.id })
     .from(schema.projects)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-    .where(
-      and(
-        eq(schema.projects.id, projectId),
-        eq(schema.clients.userId, userId),
-      ),
-    )
+    .where(and(eq(schema.projects.id, projectId), eq(schema.clients.userId, userId)))
     .limit(1);
   if (!projectRows[0]) {
     throw new ProjectError("project_not_found", "Project not found.", 404);
@@ -362,12 +351,7 @@ export async function setProjectDomain(
   const domainRows = await db
     .select({ id: schema.canonDomains.id })
     .from(schema.canonDomains)
-    .where(
-      and(
-        eq(schema.canonDomains.id, domainId),
-        eq(schema.canonDomains.userId, userId),
-      ),
-    )
+    .where(and(eq(schema.canonDomains.id, domainId), eq(schema.canonDomains.userId, userId)))
     .limit(1);
   if (!domainRows[0]) {
     throw new ProjectError(
@@ -377,10 +361,7 @@ export async function setProjectDomain(
     );
   }
 
-  await db
-    .update(schema.projects)
-    .set({ domainId })
-    .where(eq(schema.projects.id, projectId));
+  await db.update(schema.projects).set({ domainId }).where(eq(schema.projects.id, projectId));
 }
 
 export interface DocumentRow {
@@ -426,6 +407,10 @@ export async function getProjectByPath(
       domainId: schema.projects.domainId,
       domainSlug: schema.canonDomains.slug,
       domainName: schema.canonDomains.name,
+      // Plain strings, safe to hand to client components. Callers that need
+      // the connection derive it with corpusDbFor(project).
+      isolationMode: schema.clients.isolationMode,
+      corpusDbUrlEnv: schema.clients.corpusDbUrlEnv,
     })
     .from(schema.projects)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
@@ -442,7 +427,7 @@ export async function getProjectByPath(
   const row = rows[0];
   if (!row) return null;
 
-  const [counts] = await db
+  const [counts] = await corpusDbFor(row)
     .select({
       documents: sql<number>`count(distinct ${schema.documents.id})::int`,
       chunks: sql<number>`count(${schema.chunks.id})::int`,
@@ -458,8 +443,11 @@ export async function getProjectByPath(
   };
 }
 
-export async function getTypeCountsForProject(projectId: string): Promise<TypeCount[]> {
-  const rows = await db
+export async function getTypeCountsForProject(
+  corpusDb: WorkbrainDb,
+  projectId: string,
+): Promise<TypeCount[]> {
+  const rows = await corpusDb
     .select({
       type: schema.documents.type,
       count: sql<number>`count(*)::int`,
@@ -478,6 +466,7 @@ export interface ListDocumentsOpts {
 }
 
 export async function listDocumentsForProject(
+  corpusDb: WorkbrainDb,
   projectId: string,
   opts: ListDocumentsOpts = {},
 ): Promise<DocumentRow[]> {
@@ -495,7 +484,7 @@ export async function listDocumentsForProject(
     if (queryFilter) filters.push(queryFilter);
   }
 
-  const rows = await db
+  const rows = await corpusDb
     .select({
       documentId: schema.documents.id,
       type: schema.documents.type,
@@ -525,7 +514,7 @@ export async function listDocumentsForProject(
       .from(schema.documentLinks)
       .where(inArray(schema.documentLinks.fromDocumentId, ids))
       .groupBy(schema.documentLinks.fromDocumentId),
-    db
+    corpusDb
       .select({
         docId: schema.documentLinks.toDocumentId,
         n: count(schema.documentLinks.id),

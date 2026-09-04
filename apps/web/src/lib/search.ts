@@ -3,8 +3,8 @@ import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { ARCHIVED_STATUS } from "./curation";
-import { db } from "./db";
 import { type RerankUsage, embed, rerank } from "./embeddings";
+import { TenancyError, resolveProjectContext } from "./tenancy";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const isoDate = z.string().regex(ISO_DATE_PATTERN, "Date must be YYYY-MM-DD");
@@ -73,36 +73,21 @@ function rerankCostUsd(usage: RerankUsage): string {
   return (usage.totalTokens * RERANK_PRICING_PER_TOKEN).toFixed(6);
 }
 
-interface ResolvedProject {
-  projectId: string;
-}
-
-async function resolveProject(userId: string, projectSlug: string): Promise<ResolvedProject> {
-  const rows = await db
-    .select({ projectId: schema.projects.id })
-    .from(schema.projects)
-    .innerJoin(schema.clients, eq(schema.projects.clientId, schema.clients.id))
-    .where(and(eq(schema.clients.userId, userId), eq(schema.projects.slug, projectSlug)))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row) {
-    throw new SearchError(
-      "project_not_found",
-      `Project not found for active user: ${projectSlug}`,
-      404,
-    );
-  }
-  return row;
-}
-
 export async function search(
   userId: string,
   input: SearchInput,
   meta: InvocationMeta = {},
 ): Promise<SearchResult> {
   const start = Date.now();
-  const project = await resolveProject(userId, input.projectSlug);
+  // Resolving the project also resolves which database holds its corpus.
+  // Every read below goes through that handle, never the central one.
+  // Tenancy failures are re-thrown as SearchError so the API contract
+  // (project_not_found -> 404) is unchanged.
+  const project = await resolveProjectContext(userId, input.projectSlug).catch((err: unknown) => {
+    if (err instanceof TenancyError) throw new SearchError(err.code, err.message, err.status);
+    throw err;
+  });
+  const corpusDb = project.corpusDb;
 
   const topK = input.topK ?? DEFAULT_TOP_K;
   const minSimilarity = input.minSimilarity ?? DEFAULT_MIN_SIMILARITY;
@@ -151,7 +136,7 @@ export async function search(
       conditions.push(lte(schema.documents.createdAt, endOfDay));
     }
 
-    const rows = await db
+    const rows = await corpusDb
       .select({
         documentId: schema.chunks.documentId,
         documentPath: schema.documents.path,
@@ -202,6 +187,7 @@ export async function search(
     }
 
     await recordInvocation({
+      corpusDb,
       userId,
       projectId: project.projectId,
       operation: "search",
@@ -230,6 +216,7 @@ export async function search(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await recordInvocation({
+      corpusDb,
       userId,
       projectId: project.projectId,
       operation: "search",

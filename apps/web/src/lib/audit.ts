@@ -1,5 +1,6 @@
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
-import { db, schema } from "./db";
+import { type WorkbrainDb, schema } from "./db";
+import { corpusMapForUser, fanOutCorpus } from "./tenancy";
 
 export interface InvocationDetail {
   id: string;
@@ -55,6 +56,14 @@ export interface InvocationMeta {
 }
 
 interface RecordInvocationInput {
+  /**
+   * The database this row belongs in — the client's corpus database, from
+   * `resolveProjectContext(...).corpusDb`. An invocation carries the prompt
+   * and the retrieved chunks, so it is client content and follows the client.
+   * Pass the central handle only for rows with no project (an unknown slug,
+   * a rejected key), which belong to no client.
+   */
+  corpusDb: WorkbrainDb;
   userId: string;
   projectId: string | null;
   operation: string;
@@ -80,7 +89,7 @@ interface RecordInvocationInput {
 // operation if they fail. Errors are logged to stderr.
 export async function recordInvocation(input: RecordInvocationInput): Promise<void> {
   try {
-    await db.insert(schema.invocations).values({
+    await input.corpusDb.insert(schema.invocations).values({
       userId: input.userId,
       projectId: input.projectId,
       operation: input.operation,
@@ -131,6 +140,8 @@ export async function listInvocations(
   const pageSize = Math.min(Math.max(opts.pageSize ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
   const requestedPage = Math.max(opts.page ?? 1, 1);
 
+  const map = await corpusMapForUser(userId);
+
   const filters: SQL[] = [eq(schema.invocations.userId, userId)];
   if (opts.projectId) filters.push(eq(schema.invocations.projectId, opts.projectId));
   if (opts.operation) filters.push(eq(schema.invocations.operation, opts.operation));
@@ -138,18 +149,28 @@ export async function listInvocations(
 
   const where = and(...filters);
 
-  const totalRow = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(schema.invocations)
-    .where(where)
-    .then((r) => r[0]);
+  const counts = await Promise.all(
+    map.targets.map((t) =>
+      t.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(schema.invocations)
+        .where(where)
+        .then((r) => r[0]?.total ?? 0),
+    ),
+  );
+  const total = counts.reduce((a, b) => a + b, 0);
 
-  const total = totalRow?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(requestedPage, totalPages);
   const offset = (page - 1) * pageSize;
 
-  const rows = await db
+  // Ordering and paging cannot be pushed into SQL once rows come from more
+  // than one database. Each target returns enough rows to cover the window,
+  // then the merged list is sorted and sliced. Cheap while a user has a
+  // handful of clients; revisit if that stops being true.
+  const window = offset + pageSize;
+  const merged = await fanOutCorpus(map, (t) =>
+    t.db
       .select({
         id: schema.invocations.id,
         operation: schema.invocations.operation,
@@ -169,17 +190,25 @@ export async function listInvocations(
         responseText: schema.invocations.responseText,
         createdAt: schema.invocations.createdAt,
         projectId: schema.invocations.projectId,
-        projectSlug: schema.projects.slug,
-        projectName: schema.projects.name,
-        clientSlug: schema.clients.slug,
       })
       .from(schema.invocations)
-      .leftJoin(schema.projects, eq(schema.projects.id, schema.invocations.projectId))
-      .leftJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
       .where(where)
       .orderBy(desc(schema.invocations.createdAt))
-      .limit(pageSize)
-      .offset(offset);
+      .limit(window),
+  );
+
+  const rows: InvocationDetail[] = merged
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(offset, offset + pageSize)
+    .map((r) => {
+      const label = r.projectId ? map.labels.get(r.projectId) : undefined;
+      return {
+        ...r,
+        projectSlug: label?.projectSlug ?? null,
+        projectName: label?.projectName ?? null,
+        clientSlug: label?.clientSlug ?? null,
+      };
+    });
 
   return { rows, total, page, pageSize, totalPages };
 }
@@ -222,22 +251,29 @@ export async function listActivity(
   if (opts.projectId) filters.push(eq(schema.invocations.projectId, opts.projectId));
   if (opts.sessionId) filters.push(eq(schema.invocations.sessionId, opts.sessionId));
 
-  const rows = await db
-    .select({
-      id: schema.invocations.id,
-      createdAt: schema.invocations.createdAt,
-      operation: schema.invocations.operation,
-      activityKind: schema.invocations.activityKind,
-      targetExternalId: schema.invocations.targetExternalId,
-      sessionId: schema.invocations.sessionId,
-      status: schema.invocations.status,
-      errorDetail: schema.invocations.errorDetail,
-      userPrompt: schema.invocations.userPrompt,
-    })
-    .from(schema.invocations)
-    .where(and(...filters))
-    .orderBy(desc(schema.invocations.createdAt))
-    .limit(limit);
+  const map = await corpusMapForUser(userId);
+  const merged = await fanOutCorpus(map, (t) =>
+    t.db
+      .select({
+        id: schema.invocations.id,
+        createdAt: schema.invocations.createdAt,
+        operation: schema.invocations.operation,
+        activityKind: schema.invocations.activityKind,
+        targetExternalId: schema.invocations.targetExternalId,
+        sessionId: schema.invocations.sessionId,
+        status: schema.invocations.status,
+        errorDetail: schema.invocations.errorDetail,
+        userPrompt: schema.invocations.userPrompt,
+      })
+      .from(schema.invocations)
+      .where(and(...filters))
+      .orderBy(desc(schema.invocations.createdAt))
+      .limit(limit),
+  );
+
+  const rows = merged
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, limit);
 
   return rows.map((r) => ({
     id: r.id,
@@ -300,10 +336,13 @@ function describeActivity(args: {
 }
 
 export async function getDistinctOperations(userId: string): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ operation: schema.invocations.operation })
-    .from(schema.invocations)
-    .where(eq(schema.invocations.userId, userId))
-    .orderBy(schema.invocations.operation);
-  return rows.map((r) => r.operation);
+  const map = await corpusMapForUser(userId);
+  const rows = await fanOutCorpus(map, (t) =>
+    t.db
+      .selectDistinct({ operation: schema.invocations.operation })
+      .from(schema.invocations)
+      .where(eq(schema.invocations.userId, userId))
+      .orderBy(schema.invocations.operation),
+  );
+  return [...new Set(rows.map((r) => r.operation))].sort();
 }

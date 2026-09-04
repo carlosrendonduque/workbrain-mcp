@@ -4,9 +4,10 @@ import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { ClassifierError, type ClassifierUsage, classify } from "./classifier";
 import { buildDocumentPath, writeDocument } from "./corpus";
-import { db } from "./db";
+import type { WorkbrainDb } from "./db";
 import { chunkMarkdown } from "./chunking";
 import { embed } from "./embeddings";
+import { type ProjectContext, TenancyError, resolveProjectContext } from "./tenancy";
 import { commitAndPush, ensureRepo, loadRepoConfigFromEnv } from "./git";
 
 const DOCUMENT_TYPES = [
@@ -118,14 +119,6 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-interface ResolvedProject {
-  projectId: string;
-  projectSlug: string;
-  clientId: string;
-  clientSlug: string;
-  persist: boolean;
-}
-
 interface ReferenceCandidate {
   externalId: string;
   source: "classifier" | "input";
@@ -142,6 +135,7 @@ interface AutoLinkOutcome {
 // automatically (governance: each client/project is an architecturally
 // guaranteed silo). Self-links are skipped.
 async function autoLinkReferences(args: {
+  corpusDb: WorkbrainDb;
   fromDocumentId: string;
   projectId: string;
   candidates: ReferenceCandidate[];
@@ -159,7 +153,7 @@ async function autoLinkReferences(args: {
   }
   const externalIds = Array.from(sourceByExternalId.keys());
 
-  const matches = await db
+  const matches = await args.corpusDb
     .select({
       id: schema.documents.id,
       externalId: schema.documents.externalId,
@@ -207,34 +201,18 @@ async function autoLinkReferences(args: {
   }
 
   if (linkRows.length > 0) {
-    await db.insert(schema.documentLinks).values(linkRows);
+    await args.corpusDb.insert(schema.documentLinks).values(linkRows);
   }
   return { links, unmatched };
 }
 
-async function resolveProject(userId: string, projectSlug: string): Promise<ResolvedProject> {
-  const rows = await db
-    .select({
-      projectId: schema.projects.id,
-      projectSlug: schema.projects.slug,
-      clientId: schema.clients.id,
-      clientSlug: schema.clients.slug,
-      persist: schema.projects.persist,
-    })
-    .from(schema.projects)
-    .innerJoin(schema.clients, eq(schema.projects.clientId, schema.clients.id))
-    .where(and(eq(schema.clients.userId, userId), eq(schema.projects.slug, projectSlug)))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row) {
-    throw new IngestError(
-      "project_not_found",
-      `Project not found for active user: ${projectSlug}`,
-      404,
-    );
+async function resolveProject(userId: string, projectSlug: string): Promise<ProjectContext> {
+  try {
+    return await resolveProjectContext(userId, projectSlug);
+  } catch (err) {
+    if (err instanceof TenancyError) throw new IngestError(err.code, err.message, err.status);
+    throw err;
   }
-  return row;
 }
 
 export async function ingestPaste(
@@ -244,7 +222,7 @@ export async function ingestPaste(
 ): Promise<IngestPasteResult> {
   const start = Date.now();
 
-  let projectInfo: ResolvedProject | null = null;
+  let projectInfo: ProjectContext | null = null;
   let classifierUsage: ClassifierUsage | undefined;
   let classifierCost: string | undefined;
   let classifierResponse: string | undefined;
@@ -321,7 +299,7 @@ export async function ingestPaste(
       writtenRelativePath = written.relativePath;
     }
 
-    const inserted = await db
+    const inserted = await projectInfo.corpusDb
       .insert(schema.documents)
       .values({
         projectId: projectInfo.projectId,
@@ -374,7 +352,7 @@ export async function ingestPaste(
         };
       });
 
-      await db.insert(schema.chunks).values(chunkRows);
+      await projectInfo.corpusDb.insert(schema.chunks).values(chunkRows);
       chunkCount = chunkRows.length;
     }
 
@@ -392,6 +370,7 @@ export async function ingestPaste(
       }
     }
     const linkOutcome = await autoLinkReferences({
+      corpusDb: projectInfo.corpusDb,
       fromDocumentId: documentId,
       projectId: projectInfo.projectId,
       candidates: referenceCandidates,
@@ -406,6 +385,7 @@ export async function ingestPaste(
     }
 
     await recordInvocation({
+      corpusDb: projectInfo.corpusDb,
       userId,
       projectId: projectInfo.projectId,
       operation: "ingest_paste",
@@ -441,6 +421,7 @@ export async function ingestPaste(
     const message = err instanceof Error ? err.message : String(err);
     if (projectInfo) {
       await recordInvocation({
+        corpusDb: projectInfo.corpusDb,
         userId,
         projectId: projectInfo.projectId,
         operation: "ingest_paste",

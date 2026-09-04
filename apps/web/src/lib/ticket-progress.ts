@@ -3,7 +3,8 @@
 // signals "not done yet"; the active phase is the next empty stage.
 
 import { and, eq, sql } from "drizzle-orm";
-import { db, schema } from "./db";
+import { type WorkbrainDb, schema } from "./db";
+import { TenancyError, resolveProjectContext } from "./tenancy";
 
 export const TICKET_STAGES = ["analysis", "design", "build", "tests", "deployment"] as const;
 export type TicketStage = (typeof TICKET_STAGES)[number];
@@ -57,14 +58,24 @@ interface OwnedTicket {
   title: string;
   type: string;
   progress: TicketProgress;
+  corpusDb: WorkbrainDb;
 }
 
+// Ownership comes from resolving the project centrally; the ticket itself is
+// then looked up inside that client's database, scoped to the project id.
 async function resolveOwnedTicket(
   userId: string,
   projectSlug: string,
   externalId: string,
 ): Promise<OwnedTicket> {
-  const rows = await db
+  const project = await resolveProjectContext(userId, projectSlug).catch((err: unknown) => {
+    if (err instanceof TenancyError) {
+      throw new TicketProgressError(err.code, err.message, err.status);
+    }
+    throw err;
+  });
+
+  const rows = await project.corpusDb
     .select({
       documentId: schema.documents.id,
       externalId: schema.documents.externalId,
@@ -73,12 +84,9 @@ async function resolveOwnedTicket(
       progress: schema.documents.progress,
     })
     .from(schema.documents)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.documents.projectId))
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
     .where(
       and(
-        eq(schema.clients.userId, userId),
-        eq(schema.projects.slug, projectSlug),
+        eq(schema.documents.projectId, project.projectId),
         eq(schema.documents.externalId, externalId),
       ),
     )
@@ -98,6 +106,7 @@ async function resolveOwnedTicket(
     title: row.title,
     type: row.type,
     progress: normalizeProgress(row.progress),
+    corpusDb: project.corpusDb,
   };
 }
 
@@ -133,7 +142,7 @@ export async function setTicketProgress(
   const trimmed = input.content?.trim();
   next[input.stage] = trimmed && trimmed.length > 0 ? trimmed : null;
 
-  await db
+  await ticket.corpusDb
     .update(schema.documents)
     .set({ progress: next, updatedAt: sql`now()` })
     .where(eq(schema.documents.id, ticket.documentId));

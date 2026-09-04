@@ -2,12 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProjectByPath, getTypeCountsForProject } from "@/lib/projects";
 import { SearchError, search } from "@/lib/search";
+import { corpusDbFor } from "@/lib/db";
 import { requireSession } from "@/lib/webapp-auth";
 
 export const dynamic = "force-dynamic";
 
 const NUMBER = new Intl.NumberFormat("en-US");
-const SCORE = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3, minimumFractionDigits: 3 });
+const SCORE = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 3,
+  minimumFractionDigits: 3,
+});
 
 interface PageProps {
   params: Promise<{ clientSlug: string; projectSlug: string }>;
@@ -21,10 +25,8 @@ function buildHref(
 ): string {
   const params = new URLSearchParams();
   const q = patch.q === null ? undefined : (patch.q ?? current.q);
-  const types =
-    patch.types === null ? undefined : (patch.types ?? current.types);
-  const norerank =
-    patch.norerank === null ? undefined : (patch.norerank ?? current.norerank);
+  const types = patch.types === null ? undefined : (patch.types ?? current.types);
+  const norerank = patch.norerank === null ? undefined : (patch.norerank ?? current.norerank);
   if (q) params.set("q", q);
   if (types && types.length > 0) params.set("types", types.join(","));
   if (norerank) params.set("norerank", "1");
@@ -51,7 +53,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
     : [];
   const useRerank = sp.norerank !== "1";
 
-  const typeCounts = await getTypeCountsForProject(project.projectId);
+  const typeCounts = await getTypeCountsForProject(corpusDbFor(project), project.projectId);
 
   let resultErr: string | null = null;
   let result: Awaited<ReturnType<typeof search>> | null = null;
@@ -91,17 +93,12 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">Semantic search</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Query the project corpus by meaning (voyage-3-large embeddings + rerank-2).
-          For metadata-only search (title / external_id / path), use the corpus browser
-          search box.
+          Query the project corpus by meaning (voyage-3-large embeddings + rerank-2). For
+          metadata-only search (title / external_id / path), use the corpus browser search box.
         </p>
       </header>
 
-      <form
-        method="get"
-        action={searchPath}
-        className="mb-4 flex flex-wrap items-center gap-2"
-      >
+      <form method="get" action={searchPath} className="mb-4 flex flex-wrap items-center gap-2">
         {activeTypes.length > 0 ? (
           <input type="hidden" name="types" value={activeTypes.join(",")} />
         ) : null}
@@ -125,7 +122,11 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
       <section className="mb-4 flex flex-wrap items-center gap-2">
         <span className="text-xs uppercase tracking-wide text-zinc-500">filter type:</span>
         <Link
-          href={buildHref(searchPath, { q: query, types: activeTypes, norerank: !useRerank }, { types: null })}
+          href={buildHref(
+            searchPath,
+            { q: query, types: activeTypes, norerank: !useRerank },
+            { types: null },
+          )}
           className={`rounded-full px-3 py-1 text-xs ${
             activeTypes.length === 0
               ? "bg-indigo-500/20 text-indigo-200 ring-1 ring-indigo-400/40"
@@ -227,17 +228,13 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
                           rerank {SCORE.format(chunk.rerankScore)}
                         </span>
                       ) : null}
-                      <span title="cosine similarity">
-                        sim {SCORE.format(chunk.similarity)}
-                      </span>
+                      <span title="cosine similarity">sim {SCORE.format(chunk.similarity)}</span>
                     </span>
                   </div>
                   <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs text-zinc-300">
                     {chunk.text}
                   </p>
-                  <p className="mt-2 font-mono text-[11px] text-zinc-500">
-                    {chunk.documentPath}
-                  </p>
+                  <p className="mt-2 font-mono text-[11px] text-zinc-500">{chunk.documentPath}</p>
                 </li>
               );
             })}
