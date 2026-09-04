@@ -19,8 +19,15 @@ describe("envVarNameForClient", () => {
     expect(envVarNameForClient("acme.finance co")).toBe("WORKBRAIN_DB_ACME_FINANCE_CO");
   });
 
+  it("handles a real client slug", () => {
+    expect(envVarNameForClient("leozenit")).toBe("WORKBRAIN_DB_LEOZENIT");
+  });
+
+  // Kept because client names in Colombia routinely carry accents, and an
+  // accented character in an environment variable name is not just ugly —
+  // it is invalid, so the client would be unreachable.
   it("strips accents rather than emitting an invalid name", () => {
-    expect(envVarNameForClient("panadería")).toBe("WORKBRAIN_DB_PANADERIA");
+    expect(envVarNameForClient("café-central")).toBe("WORKBRAIN_DB_CAFE_CENTRAL");
   });
 
   it("never leaves a leading or trailing underscore", () => {

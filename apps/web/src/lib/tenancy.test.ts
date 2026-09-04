@@ -21,8 +21,8 @@ function placement(over: Partial<Parameters<TenancyModule["groupByCorpus"]>[0][n
     projectSlug: "project-x",
     projectName: "Project X",
     clientId: "c1",
-    clientSlug: "bakery",
-    clientName: "Bakery",
+    clientSlug: "leozenit",
+    clientName: "ZenIT",
     isolationMode: "shared",
     corpusDbUrlEnv: null,
     ...over,
@@ -40,7 +40,7 @@ describe("groupByCorpus", () => {
   it("collapses every shared client into a single target", () => {
     const map = tenancy.groupByCorpus(
       [
-        placement({ projectId: "p1", clientId: "c1", clientSlug: "bakery" }),
+        placement({ projectId: "p1", clientId: "c1", clientSlug: "leozenit" }),
         placement({ projectId: "p2", clientId: "c2", clientSlug: "deli" }),
         placement({ projectId: "p3", clientId: "c2", clientSlug: "deli" }),
       ],
@@ -59,7 +59,7 @@ describe("groupByCorpus", () => {
   it("gives each dedicated client its own target", () => {
     const map = tenancy.groupByCorpus(
       [
-        placement({ projectId: "p1", clientId: "c1", clientSlug: "bakery" }),
+        placement({ projectId: "p1", clientId: "c1", clientSlug: "leozenit" }),
         placement({
           projectId: "p2",
           clientId: "c2",
@@ -134,7 +134,7 @@ describe("groupByCorpus", () => {
   it("labels every project so fanned-out rows can be named", () => {
     const map = tenancy.groupByCorpus(
       [
-        placement({ projectId: "p1", projectSlug: "orion", clientSlug: "bakery" }),
+        placement({ projectId: "p1", projectSlug: "orion", clientSlug: "leozenit" }),
         placement({
           projectId: "p2",
           projectSlug: "vault",
@@ -148,7 +148,7 @@ describe("groupByCorpus", () => {
     );
 
     expect(map.labels.get("p1")?.projectSlug).toBe("orion");
-    expect(map.labels.get("p1")?.clientSlug).toBe("bakery");
+    expect(map.labels.get("p1")?.clientSlug).toBe("leozenit");
     expect(map.labels.get("p2")?.projectSlug).toBe("vault");
     expect(map.labels.get("p2")?.clientSlug).toBe("bank");
     expect(map.allProjectIds).toEqual(["p1", "p2"]);
@@ -202,7 +202,7 @@ describe("fanOutCorpus", () => {
 // another client's corpus. These are the cases that matter if it regresses.
 describe("groupByCorpus with a client scope", () => {
   const rows = [
-    placement({ projectId: "p1", clientId: "bakery-id", clientSlug: "bakery" }),
+    placement({ projectId: "p1", clientId: "leozenit-id", clientSlug: "leozenit" }),
     placement({ projectId: "p2", clientId: "bank-id", clientSlug: "bank" }),
     placement({ projectId: "p3", clientId: "bank-id", clientSlug: "bank" }),
   ];
@@ -242,7 +242,7 @@ describe("groupByCorpus with a client scope", () => {
   it("keeps a scoped dedicated client on its own database", () => {
     const map = tenancy.groupByCorpus(
       [
-        placement({ projectId: "p1", clientId: "bakery-id" }),
+        placement({ projectId: "p1", clientId: "leozenit-id" }),
         placement({
           projectId: "p2",
           clientId: "bank-id",
