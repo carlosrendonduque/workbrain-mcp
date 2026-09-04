@@ -166,7 +166,10 @@ Interactive prompt for client and project slugs. Validates uniqueness, asks befo
 | `pnpm typecheck` | TypeScript across all workspaces |
 | `pnpm test` | Vitest across all workspaces (33+ tests) |
 | `pnpm format` | Biome write |
-| `pnpm --filter @workbrain/web db:migrate` | Apply pending migrations |
+| `pnpm --filter @workbrain/web db:migrate` | Apply pending migrations to the central database |
+| `pnpm --filter @workbrain/web db:migrate:all` | Apply them to the central database **and every dedicated client database** |
+| `pnpm --filter @workbrain/web db:isolation` | Show where each client's corpus lives and whether the app can reach it |
+| `pnpm --filter @workbrain/web db:isolate <client>` | Move a client into a database of its own |
 | `pnpm --filter @workbrain/web db:generate` | Generate new migration from schema diff |
 | `pnpm --filter @workbrain/web db:info` | Inspect tables, extensions, indexes |
 | `pnpm --filter @workbrain/web db:seed:dev` | Idempotent dev seed (placeholders) |
@@ -206,6 +209,76 @@ Exposed by `packages/mcp-server` over stdio:
 The server advertises `instructions` (see `packages/mcp-server/src/instructions.ts`) during the MCP `initialize` handshake. The host injects that block before the first user turn, so the "resolve the project, then read the canon" contract reaches every new conversation on every machine without committing anything to a project repo. Per-project content belongs in the canon itself, never in this block.
 
 The active project resolves in this order: an explicit `set_active_project` call > `WORKBRAIN_PROJECT_SLUG` > a binding previously saved for the current working directory (longest matching prefix, so subdirectories inherit). Bindings live in `~/.workbrain/state.json`, overridable with `WORKBRAIN_STATE_FILE`. There is deliberately no "last project used" fallback: clients are siloed, and resolving to whatever was touched last would surface one client's context inside another client's repo.
+
+## Where each client's data lives
+
+Every client declares how isolated it needs to be. The setting lives on the
+`clients` row and decides three things: where the corpus is stored, which
+account processes its text, and which credentials can reach it.
+
+| | Shared | Dedicated |
+|---|---|---|
+| Corpus lives in | the central database, alongside other shared clients | a database of its own |
+| Answer to *"is my data in the same database as your other clients?"* | no other client's rows are returned, but yes, same database | **no** |
+| Costs you | nothing | ~USD 1-2/month on Neon |
+| Set up with | nothing — it's the default | `db:isolate <client>` |
+
+`shared` is the default and reproduces the behaviour that existed before this
+mechanism, so nothing moves until you deliberately move it.
+
+### What lives where
+
+The **central** database holds the registry and the account: `users`,
+`api_keys`, `signup_tokens`, `canon_domains`, `clients`, `projects`.
+
+A **client's** database holds its content: `documents`, `chunks`,
+`document_links`, `stakeholders`, `draft_documents`, `invocations`.
+
+Postgres cannot join across databases, so any query that used to join corpus
+to `projects` and `clients` is now a central lookup plus a scoped corpus
+query. Ownership is still proven — by scoping to the project ids the registry
+says live in that database. Corpus reads and writes must go through
+`corpusDbFor(client)` (see `src/lib/db.ts`) or `resolveProjectContext`
+(`src/lib/tenancy.ts`); reaching a corpus table through the central handle is
+the one mistake this design cannot catch for you.
+
+Each dedicated database also holds a copy of its own `clients` row and its
+`projects` rows. Nothing reads them — the central registry stays
+authoritative — they exist so the corpus tables' foreign keys resolve, and so
+a dedicated database is a coherent, restorable thing on its own.
+
+### Moving a client to its own database
+
+The move copies and verifies everything **before** the client switches over,
+so an interrupted run leaves a working system:
+
+```bash
+# 1. Copy and verify. Changes nothing; creates the Neon project when
+#    NEON_API_KEY is set, or pass --url for a database you made yourself.
+pnpm --filter @workbrain/web db:isolate acme
+
+# 2. Add the connection string it prints to your environment (and to Vercel),
+#    then switch the client over:
+pnpm --filter @workbrain/web db:isolate acme --url "<same url>" --apply
+
+# 3. Once you have confirmed the app reads the new database:
+pnpm --filter @workbrain/web db:isolate acme --url "<same url>" --apply --purge-source
+```
+
+Secrets never enter the database: the `clients` row stores the **name** of the
+environment variable holding the connection string, not the string itself.
+
+### Two things that will bite if you forget them
+
+- **Migrations.** `db:migrate` only touches the central database. Use
+  `db:migrate:all` once any client is dedicated, or that client's schema
+  falls behind the code querying it. It exits non-zero when a dedicated
+  database is unreachable rather than reporting success.
+- **Environment variables.** A dedicated client whose variable is missing
+  makes every request for that client fail loudly. That is deliberate — the
+  alternative is silently reading the shared database, which would put one
+  client's corpus in with everyone else's. Run `db:isolation` before a deploy
+  to see the state of all of them at once.
 
 ## Cross-project isolation
 
