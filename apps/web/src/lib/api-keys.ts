@@ -8,6 +8,10 @@ export interface ApiKeyRow {
   hashFingerprint: string;
   createdAt: Date | string;
   lastUsedAt: Date | string | null;
+  /** null when the key may reach every client the user owns. */
+  clientId: string | null;
+  clientSlug: string | null;
+  clientName: string | null;
 }
 
 export class ApiKeyError extends Error {
@@ -30,8 +34,12 @@ export async function listApiKeys(userId: string): Promise<ApiKeyRow[]> {
       keyHash: schema.apiKeys.keyHash,
       createdAt: schema.apiKeys.createdAt,
       lastUsedAt: schema.apiKeys.lastUsedAt,
+      clientId: schema.apiKeys.clientId,
+      clientSlug: schema.clients.slug,
+      clientName: schema.clients.name,
     })
     .from(schema.apiKeys)
+    .leftJoin(schema.clients, eq(schema.clients.id, schema.apiKeys.clientId))
     .where(eq(schema.apiKeys.userId, userId))
     .orderBy(desc(schema.apiKeys.createdAt));
 
@@ -41,6 +49,9 @@ export async function listApiKeys(userId: string): Promise<ApiKeyRow[]> {
     hashFingerprint: r.keyHash.slice(0, 12),
     createdAt: r.createdAt,
     lastUsedAt: r.lastUsedAt,
+    clientId: r.clientId,
+    clientSlug: r.clientSlug,
+    clientName: r.clientName,
   }));
 }
 
@@ -56,23 +67,51 @@ export interface CreatedApiKey {
   apiKeyId: string;
   rawKey: string;
   label: string;
+  clientSlug: string | null;
 }
 
-export async function createApiKey(userId: string, label: string): Promise<CreatedApiKey> {
+/**
+ * Mint a key. Passing a clientId pins it to that client and nothing else,
+ * which is what you want for the key that lives in one client's repo: if that
+ * laptop is lost, the blast radius is that client rather than all of them.
+ * Omit it for a key that may reach every client the user owns.
+ */
+export async function createApiKey(
+  userId: string,
+  label: string,
+  clientId?: string | null,
+): Promise<CreatedApiKey> {
   if (label.trim().length === 0) {
     throw new ApiKeyError("missing_label", "Label is required.", 400);
   }
+
+  let clientSlug: string | null = null;
+  if (clientId) {
+    // Confirm the client belongs to this user before pinning to it —
+    // otherwise a crafted form could mint a key naming someone else's client.
+    const owned = await db
+      .select({ slug: schema.clients.slug })
+      .from(schema.clients)
+      .where(and(eq(schema.clients.id, clientId), eq(schema.clients.userId, userId)))
+      .limit(1);
+    const row = owned[0];
+    if (!row) {
+      throw new ApiKeyError("client_not_found", "That client does not exist for this user.", 404);
+    }
+    clientSlug = row.slug;
+  }
+
   const rawKey = generateRawKey();
   const keyHash = await hashApiKey(rawKey);
   const inserted = await db
     .insert(schema.apiKeys)
-    .values({ userId, keyHash, label: label.trim() })
+    .values({ userId, keyHash, label: label.trim(), clientId: clientId ?? null })
     .returning({ id: schema.apiKeys.id });
   const row = inserted[0];
   if (!row) {
     throw new ApiKeyError("insert_failed", "Failed to insert API key.", 500);
   }
-  return { apiKeyId: row.id, rawKey, label: label.trim() };
+  return { apiKeyId: row.id, rawKey, label: label.trim(), clientSlug };
 }
 
 export async function revokeApiKey(userId: string, apiKeyId: string): Promise<void> {

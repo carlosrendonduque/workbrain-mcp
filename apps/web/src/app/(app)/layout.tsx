@@ -25,7 +25,7 @@ function buildNavItems(pendingDrafts: number): NavItem[] {
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await requireSession();
-  const pendingDrafts = await countPendingDraftsForUser(session.userId);
+  const pendingDrafts = await countPendingDraftsForUser(session.userId, null);
   const items = buildNavItems(pendingDrafts);
 
   return (

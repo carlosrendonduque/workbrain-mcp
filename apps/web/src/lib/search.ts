@@ -76,17 +76,19 @@ function rerankCostUsd(usage: RerankUsage): string {
 export async function search(
   userId: string,
   input: SearchInput,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<SearchResult> {
   const start = Date.now();
   // Resolving the project also resolves which database holds its corpus.
   // Every read below goes through that handle, never the central one.
   // Tenancy failures are re-thrown as SearchError so the API contract
   // (project_not_found -> 404) is unchanged.
-  const project = await resolveProjectContext(userId, input.projectSlug).catch((err: unknown) => {
-    if (err instanceof TenancyError) throw new SearchError(err.code, err.message, err.status);
-    throw err;
-  });
+  const project = await resolveProjectContext(userId, input.projectSlug, meta.clientScope).catch(
+    (err: unknown) => {
+      if (err instanceof TenancyError) throw new SearchError(err.code, err.message, err.status);
+      throw err;
+    },
+  );
   const corpusDb = project.corpusDb;
 
   const topK = input.topK ?? DEFAULT_TOP_K;

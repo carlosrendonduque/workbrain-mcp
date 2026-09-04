@@ -70,7 +70,7 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
   const [types, docs, pendingDrafts] = await Promise.all([
     getTypeCountsForProject(corpusDb, project.projectId),
     listDocumentsForProject(corpusDb, project.projectId, { type, query: q }),
-    listDrafts(session.userId, { projectSlug, status: "pending" }),
+    listDrafts(session.userId, null, { projectSlug, status: "pending" }),
   ]);
   const pendingDraftsCount = pendingDrafts.length;
 

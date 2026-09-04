@@ -13,6 +13,28 @@ import { type WorkbrainDb, corpusDbFor, db } from "./db";
  * lookup plus a corpus query, stitched together here.
  */
 
+/**
+ * How far a caller may reach.
+ *
+ * `null` means every client the user owns — a browser session, or an API key
+ * that was never scoped. A client id means the caller may touch that client
+ * and nothing else, which is what an API key pinned to one client carries.
+ *
+ * Every function here takes it as a REQUIRED argument rather than an optional
+ * one. Optional would fail open: forget to pass it at one call site and a
+ * scoped key silently gets full access. Required makes the compiler ask the
+ * question at every call site, and callers that are legitimately unscoped say
+ * so by passing null.
+ */
+export type ClientScope = string | null;
+
+/** A project outside the caller's scope is reported as missing, never as
+ * forbidden — "forbidden" would confirm that a project with that slug exists
+ * under another client, which is exactly what a scoped key must not learn. */
+function outOfScope(scope: ClientScope, clientId: string): boolean {
+  return scope !== null && scope !== clientId;
+}
+
 export class TenancyError extends Error {
   readonly code: string;
   readonly status: number;
@@ -77,10 +99,11 @@ function withCorpusDb(row: Omit<ProjectContext, "corpusDb">): ProjectContext {
   return { ...row, corpusDb: corpusDbFor(row) };
 }
 
-/** Look up a project by slug within one user's clients. */
+/** Look up a project by slug within one user's clients, honouring the scope. */
 export async function resolveProjectContext(
   userId: string,
   projectSlug: string,
+  scope: ClientScope,
 ): Promise<ProjectContext> {
   const rows = await db
     .select(projectColumns)
@@ -90,7 +113,7 @@ export async function resolveProjectContext(
     .limit(1);
 
   const row = rows[0];
-  if (!row) {
+  if (!row || outOfScope(scope, row.clientId)) {
     throw new TenancyError(
       "project_not_found",
       `Project not found for active user: ${projectSlug}`,
@@ -104,6 +127,7 @@ export async function resolveProjectContext(
 export async function resolveProjectContextById(
   userId: string,
   projectId: string,
+  scope: ClientScope,
 ): Promise<ProjectContext> {
   const rows = await db
     .select(projectColumns)
@@ -113,8 +137,8 @@ export async function resolveProjectContextById(
     .limit(1);
 
   const row = rows[0];
-  if (!row) {
-    throw new TenancyError("project_not_found", `Project not found for active user`, 404);
+  if (!row || outOfScope(scope, row.clientId)) {
+    throw new TenancyError("project_not_found", "Project not found for active user", 404);
   }
   return withCorpusDb(row);
 }
@@ -171,7 +195,7 @@ export interface ProjectPlacement {
  * rule — every shared client collapses into one target, each dedicated
  * connection gets its own — is testable without a database.
  */
-export function groupByCorpus(rows: ProjectPlacement[]): UserCorpusMap {
+export function groupByCorpus(rows: ProjectPlacement[], scope: ClientScope): UserCorpusMap {
   const byKey = new Map<string, CorpusTarget>();
   const labels = new Map<string, ProjectLabel>();
   const allProjectIds: string[] = [];
@@ -183,6 +207,11 @@ export function groupByCorpus(rows: ProjectPlacement[]): UserCorpusMap {
   byKey.set("shared", { key: "shared", db, clientIds: [], projectIds: [] });
 
   for (const row of rows) {
+    // Out-of-scope clients are dropped here rather than filtered by each
+    // caller, so a scoped key's dashboard, audit and drafts inbox all narrow
+    // for free.
+    if (outOfScope(scope, row.clientId)) continue;
+
     labels.set(row.projectId, {
       projectId: row.projectId,
       projectSlug: row.projectSlug,
@@ -219,7 +248,7 @@ export function groupByCorpus(rows: ProjectPlacement[]): UserCorpusMap {
  * Callers that only need one project should use `resolveProjectContext`;
  * this is for the screens that legitimately span clients.
  */
-export async function corpusMapForUser(userId: string): Promise<UserCorpusMap> {
+export async function corpusMapForUser(userId: string, scope: ClientScope): Promise<UserCorpusMap> {
   const rows = await db
     .select({
       projectId: schema.projects.id,
@@ -235,7 +264,7 @@ export async function corpusMapForUser(userId: string): Promise<UserCorpusMap> {
     .innerJoin(schema.clients, eq(schema.projects.clientId, schema.clients.id))
     .where(eq(schema.clients.userId, userId));
 
-  return groupByCorpus(rows);
+  return groupByCorpus(rows, scope);
 }
 
 /**

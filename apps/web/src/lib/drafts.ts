@@ -5,6 +5,7 @@ import { type WorkbrainDb, schema } from "./db";
 import {
   type CorpusTarget,
   type UserCorpusMap,
+  type ClientScope,
   TenancyError,
   corpusMapForUser,
   fanOutCorpus,
@@ -80,9 +81,9 @@ export interface DraftRow {
   reviewedAt: Date | string | null;
 }
 
-async function resolveProject(userId: string, projectSlug: string) {
+async function resolveProject(userId: string, projectSlug: string, scope: ClientScope) {
   try {
-    return await resolveProjectContext(userId, projectSlug);
+    return await resolveProjectContext(userId, projectSlug, scope);
   } catch (err) {
     if (err instanceof TenancyError) throw new DraftError(err.code, err.message, err.status);
     throw err;
@@ -95,9 +96,10 @@ async function resolveProject(userId: string, projectSlug: string) {
 // ownership now that drafts and projects cannot be joined.
 async function draftScope(
   userId: string,
+  scope: ClientScope,
   projectSlug?: string,
 ): Promise<{ map: UserCorpusMap; idsFor: (t: CorpusTarget) => string[] }> {
-  const map = await corpusMapForUser(userId);
+  const map = await corpusMapForUser(userId, scope);
   const wanted = projectSlug
     ? new Set(
         [...map.labels.values()]
@@ -118,10 +120,10 @@ export interface CreatedDraft {
 export async function proposeDocument(
   userId: string,
   input: ProposeDocumentInput,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<CreatedDraft> {
   const start = Date.now();
-  const project = await resolveProject(userId, input.projectSlug);
+  const project = await resolveProject(userId, input.projectSlug, meta.clientScope);
 
   const cleanedRelations = (input.relatedExternalIds ?? [])
     .map((s) => s.trim())
@@ -174,9 +176,13 @@ export interface ListDraftsOpts {
   limit?: number;
 }
 
-export async function listDrafts(userId: string, opts: ListDraftsOpts = {}): Promise<DraftRow[]> {
+export async function listDrafts(
+  userId: string,
+  scope: ClientScope,
+  opts: ListDraftsOpts = {},
+): Promise<DraftRow[]> {
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
-  const { map, idsFor } = await draftScope(userId, opts.projectSlug);
+  const { map, idsFor } = await draftScope(userId, scope, opts.projectSlug);
 
   const extra: SQL[] = [];
   if (opts.status) extra.push(eq(schema.draftDocuments.status, opts.status));
@@ -250,9 +256,10 @@ export interface DraftTypeCountsOpts {
 
 export async function getDraftTypeCounts(
   userId: string,
+  scope: ClientScope,
   opts: DraftTypeCountsOpts = {},
 ): Promise<DraftTypeCount[]> {
-  const { map, idsFor } = await draftScope(userId, opts.projectSlug);
+  const { map, idsFor } = await draftScope(userId, scope, opts.projectSlug);
   const extra = opts.status ? [eq(schema.draftDocuments.status, opts.status)] : [];
 
   const rows = await fanOutCorpus(map, async (t) => {
@@ -272,8 +279,11 @@ export async function getDraftTypeCounts(
     .sort((a, b) => b.count - a.count);
 }
 
-export async function countPendingDraftsForUser(userId: string): Promise<number> {
-  const { map, idsFor } = await draftScope(userId);
+export async function countPendingDraftsForUser(
+  userId: string,
+  scope: ClientScope,
+): Promise<number> {
+  const { map, idsFor } = await draftScope(userId, scope);
   const rows = await fanOutCorpus(map, async (t) => {
     const ids = idsFor(t);
     if (ids.length === 0) return [];
@@ -290,8 +300,11 @@ export async function countPendingDraftsForUser(userId: string): Promise<number>
   return rows.reduce((acc, r) => acc + (r.n ?? 0), 0);
 }
 
-export async function countPendingDraftsByProject(userId: string): Promise<Map<string, number>> {
-  const { map, idsFor } = await draftScope(userId);
+export async function countPendingDraftsByProject(
+  userId: string,
+  scope: ClientScope,
+): Promise<Map<string, number>> {
+  const { map, idsFor } = await draftScope(userId, scope);
   const rows = await fanOutCorpus(map, async (t) => {
     const ids = idsFor(t);
     if (ids.length === 0) return [];
@@ -315,8 +328,8 @@ export async function countPendingDraftsByProject(userId: string): Promise<Map<s
 // scoped to the projects that live there — that scoping is what proves the
 // draft belongs to this user. Returns the handle it was found in so the
 // caller writes back to the same place.
-async function ownedDraft(userId: string, draftId: string) {
-  const map = await corpusMapForUser(userId);
+async function ownedDraft(userId: string, draftId: string, scope: ClientScope) {
+  const map = await corpusMapForUser(userId, scope);
 
   for (const target of map.targets) {
     if (target.projectIds.length === 0) continue;
@@ -373,10 +386,10 @@ export async function approveDraft(
   userId: string,
   draftId: string,
   edits: ApproveDraftEdits = {},
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<ApproveDraftResult> {
   const start = Date.now();
-  const draft = await ownedDraft(userId, draftId);
+  const draft = await ownedDraft(userId, draftId, meta.clientScope);
   if (draft.status !== "pending") {
     throw new DraftError(
       "not_pending",
@@ -512,10 +525,10 @@ async function materializeRelations(
 export async function rejectDraft(
   userId: string,
   draftId: string,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<void> {
   const start = Date.now();
-  const draft = await ownedDraft(userId, draftId);
+  const draft = await ownedDraft(userId, draftId, meta.clientScope);
   if (draft.status !== "pending") {
     throw new DraftError(
       "not_pending",
@@ -554,8 +567,9 @@ export async function editDraft(
   userId: string,
   draftId: string,
   edits: EditDraftInput,
+  scope: ClientScope,
 ): Promise<void> {
-  const draft = await ownedDraft(userId, draftId);
+  const draft = await ownedDraft(userId, draftId, scope);
   if (draft.status !== "pending") {
     throw new DraftError(
       "not_pending",

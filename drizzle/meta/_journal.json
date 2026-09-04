@@ -71,6 +71,13 @@
       "when": 1788520765499,
       "tag": "0009_per_client_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788523294709,
+      "tag": "0010_api_key_client_scope",
+      "breakpoints": true
     }
   ]
 }

@@ -33,7 +33,8 @@ export async function composeAction(
     return { status: "error", message: "Missing project context.", code: "missing_project" };
   }
 
-  const focusExternalId = mode === "focusExternalId" ? readOptional(formData, "focusExternalId") : undefined;
+  const focusExternalId =
+    mode === "focusExternalId" ? readOptional(formData, "focusExternalId") : undefined;
   const focusText = mode === "focusText" ? readOptional(formData, "focusText") : undefined;
   if (!focusExternalId && !focusText) {
     return {
@@ -47,11 +48,15 @@ export async function composeAction(
   }
 
   try {
-    const result = await composeContext(session.userId, {
-      projectSlug,
-      ...(focusExternalId ? { focusExternalId } : {}),
-      ...(focusText ? { focusText } : {}),
-    });
+    const result = await composeContext(
+      session.userId,
+      {
+        projectSlug,
+        ...(focusExternalId ? { focusExternalId } : {}),
+        ...(focusText ? { focusText } : {}),
+      },
+      { sessionId: null, clientScope: null },
+    );
     return { status: "success", result, clientSlug, projectSlug };
   } catch (err) {
     if (err instanceof ComposeError) {

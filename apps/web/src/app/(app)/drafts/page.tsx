@@ -46,7 +46,10 @@ export default async function GlobalDraftsPage({ searchParams }: PageProps) {
   const session = await requireSession();
   const sp = await searchParams;
   const requestedStatus =
-    sp.status === "approved" || sp.status === "rejected" || sp.status === "pending" || sp.status === "all"
+    sp.status === "approved" ||
+    sp.status === "rejected" ||
+    sp.status === "pending" ||
+    sp.status === "all"
       ? sp.status
       : "pending";
   const statusFilter = requestedStatus === "all" ? undefined : requestedStatus;
@@ -54,12 +57,12 @@ export default async function GlobalDraftsPage({ searchParams }: PageProps) {
   const queryFilter = sp.q && sp.q.length > 0 ? sp.q : undefined;
 
   const [drafts, typeCounts] = await Promise.all([
-    listDrafts(session.userId, {
+    listDrafts(session.userId, null, {
       status: statusFilter,
       type: typeFilter,
       query: queryFilter,
     }),
-    getDraftTypeCounts(session.userId, { status: statusFilter }),
+    getDraftTypeCounts(session.userId, null, { status: statusFilter }),
   ]);
 
   const totalForStatus = typeCounts.reduce((acc, t) => acc + t.count, 0);
@@ -90,9 +93,9 @@ export default async function GlobalDraftsPage({ searchParams }: PageProps) {
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">Drafts</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          All proposals from agent conversations across every project. Drafts don't
-          enter the corpus until you approve them. Click a project to review
-          individually with edit + approve / reject.
+          All proposals from agent conversations across every project. Drafts don't enter the corpus
+          until you approve them. Click a project to review individually with edit + approve /
+          reject.
         </p>
       </header>
 

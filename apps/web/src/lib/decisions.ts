@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { InvocationMeta } from "./audit";
 import { type IngestPasteResult, ingestPaste } from "./paste";
 
 export const RecordDecisionInputSchema = z.object({
@@ -20,13 +21,18 @@ export type RecordDecisionInput = z.infer<typeof RecordDecisionInputSchema>;
 export async function recordDecision(
   userId: string,
   input: RecordDecisionInput,
+  meta: InvocationMeta,
 ): Promise<IngestPasteResult> {
-  return ingestPaste(userId, {
-    projectSlug: input.projectSlug,
-    type: "decision",
-    title: input.title,
-    content: input.body,
-    relatedTickets: input.linksTo,
-    tags: input.tags,
-  });
+  return ingestPaste(
+    userId,
+    {
+      projectSlug: input.projectSlug,
+      type: "decision",
+      title: input.title,
+      content: input.body,
+      relatedTickets: input.linksTo,
+      tags: input.tags,
+    },
+    meta,
+  );
 }

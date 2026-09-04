@@ -54,11 +54,12 @@ export default async function AuditPage({ searchParams }: PageProps) {
   const session = await requireSession();
   const params = await searchParams;
   const page = Number.parseInt(params.page ?? "1", 10) || 1;
-  const status = params.status === "success" || params.status === "error" ? params.status : undefined;
+  const status =
+    params.status === "success" || params.status === "error" ? params.status : undefined;
 
   const [projects, operations] = await Promise.all([
-    getProjectsForUser(session.userId),
-    getDistinctOperations(session.userId),
+    getProjectsForUser(session.userId, null),
+    getDistinctOperations(session.userId, null),
   ]);
 
   // Validate project filter belongs to this user (defense in depth — userId
@@ -71,7 +72,7 @@ export default async function AuditPage({ searchParams }: PageProps) {
     ? params.project
     : undefined;
 
-  const result = await listInvocations(session.userId, {
+  const result = await listInvocations(session.userId, null, {
     projectId: validProjectId,
     operation: params.operation || undefined,
     status,
@@ -119,7 +120,8 @@ export default async function AuditPage({ searchParams }: PageProps) {
                 ? `${r.clientSlug ?? "?"}/${r.projectSlug}`
                 : "(no project)";
               const chunksJson = JSON.stringify(r.retrievedChunks ?? null, null, 2);
-              const showChunks = chunksJson !== "null" && chunksJson !== "{}" && chunksJson !== "[]";
+              const showChunks =
+                chunksJson !== "null" && chunksJson !== "{}" && chunksJson !== "[]";
               return (
                 <li key={r.id}>
                   <details className="group">
@@ -139,9 +141,7 @@ export default async function AuditPage({ searchParams }: PageProps) {
                     <div className="space-y-3 border-t border-zinc-800/70 bg-zinc-950/60 px-5 py-4 text-xs">
                       {r.errorDetail ? (
                         <div>
-                          <p className="text-[10px] uppercase tracking-wide text-red-400">
-                            error
-                          </p>
+                          <p className="text-[10px] uppercase tracking-wide text-red-400">error</p>
                           <pre className="mt-1 whitespace-pre-wrap font-mono text-red-300">
                             {r.errorDetail}
                           </pre>

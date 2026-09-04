@@ -6,7 +6,7 @@ import { requireSession } from "@/lib/webapp-auth";
 
 export type CreateKeyState =
   | { status: "idle" }
-  | { status: "success"; rawKey: string; label: string }
+  | { status: "success"; rawKey: string; label: string; clientSlug: string | null }
   | { status: "error"; message: string; code?: string };
 
 export type RevokeKeyState =
@@ -26,10 +26,19 @@ export async function createKeyAction(
     return { status: "error", message: "Label is required.", code: "missing_label" };
   }
 
+  // Empty string from the "every client" option in the picker.
+  const clientIdRaw = formData.get("clientId");
+  const clientId = typeof clientIdRaw === "string" && clientIdRaw.length > 0 ? clientIdRaw : null;
+
   try {
-    const created = await createApiKey(session.userId, label);
+    const created = await createApiKey(session.userId, label, clientId);
     revalidatePath(ACCOUNT_PATH);
-    return { status: "success", rawKey: created.rawKey, label: created.label };
+    return {
+      status: "success",
+      rawKey: created.rawKey,
+      label: created.label,
+      clientSlug: created.clientSlug,
+    };
   } catch (err) {
     if (err instanceof ApiKeyError) {
       return { status: "error", message: err.message, code: err.code };

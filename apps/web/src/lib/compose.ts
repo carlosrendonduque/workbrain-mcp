@@ -5,7 +5,12 @@ import { type InvocationMeta, recordInvocation } from "./audit";
 import { getCanonDomainById, type MergedCanon, mergeCanon } from "./canon-domains";
 import type { WorkbrainDb } from "./db";
 import { type SearchChunk, search } from "./search";
-import { type ProjectContext, TenancyError, resolveProjectContext } from "./tenancy";
+import {
+  type ClientScope,
+  type ProjectContext,
+  TenancyError,
+  resolveProjectContext,
+} from "./tenancy";
 
 export const ComposeContextInputSchema = z
   .object({
@@ -189,9 +194,13 @@ Inviolable rules:
 // The project plus the database holding its corpus. Tenancy failures are
 // re-thrown as ComposeError so the API contract (project_not_found -> 404)
 // is unchanged.
-async function resolveProject(userId: string, projectSlug: string): Promise<ProjectContext> {
+async function resolveProject(
+  userId: string,
+  projectSlug: string,
+  scope: ClientScope,
+): Promise<ProjectContext> {
   try {
-    return await resolveProjectContext(userId, projectSlug);
+    return await resolveProjectContext(userId, projectSlug, scope);
   } catch (err) {
     if (err instanceof TenancyError) throw new ComposeError(err.code, err.message, err.status);
     throw err;
@@ -306,10 +315,10 @@ async function loadCanonBundle(
 export async function getCanon(
   userId: string,
   input: GetCanonInput,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<GetCanonResult> {
   const start = Date.now();
-  const project = await resolveProject(userId, input.projectSlug);
+  const project = await resolveProject(userId, input.projectSlug, meta.clientScope);
   const { mergedCanon, stakeholders, instructionsForAgent } = await loadCanonBundle(
     userId,
     project,
@@ -346,10 +355,10 @@ export async function getCanon(
 export async function composeContext(
   userId: string,
   input: ComposeContextInput,
-  meta: InvocationMeta = {},
+  meta: InvocationMeta,
 ): Promise<ComposeContextResult> {
   const start = Date.now();
-  const project = await resolveProject(userId, input.projectSlug);
+  const project = await resolveProject(userId, input.projectSlug, meta.clientScope);
 
   let focus: FocusDocument | null = null;
   let focusReason = "";
@@ -378,13 +387,17 @@ export async function composeContext(
       ? focus.content.slice(0, FOCUS_QUERY_CHAR_LIMIT)
       : (input.focusText ?? "");
 
-    const searchResult = await search(userId, {
-      query: searchQuery,
-      projectSlug: input.projectSlug,
-      topK: input.topK,
-      minSimilarity: input.minSimilarity,
-      useRerank: true,
-    });
+    const searchResult = await search(
+      userId,
+      {
+        query: searchQuery,
+        projectSlug: input.projectSlug,
+        topK: input.topK,
+        minSimilarity: input.minSimilarity,
+        useRerank: true,
+      },
+      meta,
+    );
 
     // Drop chunks that come from the focus document itself — the caller
     // already has its full content separately.

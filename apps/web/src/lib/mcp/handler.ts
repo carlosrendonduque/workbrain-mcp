@@ -4,6 +4,7 @@
 // each request is independent, no session tracking.
 
 import { z } from "zod";
+import type { ClientScope } from "../tenancy";
 import { MCP_INSTRUCTIONS } from "./instructions";
 import { TOOLS, findTool } from "./tools";
 
@@ -106,6 +107,10 @@ function toolResult(payload: unknown, isError: boolean): unknown {
 
 export interface RequestContext {
   sessionId: string | null;
+  // The client this API key is pinned to, or null for a key that may reach
+  // every client the user owns. Forwarded into every lib call so a scoped key
+  // cannot read or write outside its client.
+  clientScope: ClientScope;
 }
 
 async function dispatchToolCall(
@@ -151,7 +156,10 @@ async function dispatchToolCall(
 export async function handleJsonRpcRequest(
   userId: string,
   body: unknown,
-  ctx: RequestContext = { sessionId: null },
+  // No default. A default would have to invent a scope, and the safe-looking
+  // choice (null = every client) is the unsafe one: a caller that forgot to
+  // pass the key's scope would silently get full access.
+  ctx: RequestContext,
 ): Promise<JsonRpcResponse | null> {
   if (!isJsonRpcRequest(body)) {
     return failure(null, JSONRPC_INVALID_REQUEST, "Invalid JSON-RPC envelope.");

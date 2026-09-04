@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
-import { corpusMapForUser, fanOutCorpus } from "./tenancy";
+import { type ClientScope, corpusMapForUser, fanOutCorpus } from "./tenancy";
 
 /**
  * Dashboard aggregates.
@@ -47,9 +47,9 @@ export interface InvocationRow {
 
 const SEVEN_DAYS_AGO = (): Date => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-export async function getOverviewStats(userId: string): Promise<OverviewStats> {
+export async function getOverviewStats(userId: string, scope: ClientScope): Promise<OverviewStats> {
   const sevenDaysAgo = SEVEN_DAYS_AGO();
-  const map = await corpusMapForUser(userId);
+  const map = await corpusMapForUser(userId, scope);
 
   // Clients and projects are central — still one query.
   const [counts] = await db
@@ -102,8 +102,11 @@ export async function getOverviewStats(userId: string): Promise<OverviewStats> {
   };
 }
 
-export async function getProjectsForUser(userId: string): Promise<ProjectRow[]> {
-  const map = await corpusMapForUser(userId);
+export async function getProjectsForUser(
+  userId: string,
+  scope: ClientScope,
+): Promise<ProjectRow[]> {
+  const map = await corpusMapForUser(userId, scope);
 
   const base = await db
     .select({
@@ -160,9 +163,10 @@ export async function getProjectsForUser(userId: string): Promise<ProjectRow[]> 
 
 export async function getRecentInvocations(
   userId: string,
+  scope: ClientScope,
   limit: number,
 ): Promise<InvocationRow[]> {
-  const map = await corpusMapForUser(userId);
+  const map = await corpusMapForUser(userId, scope);
 
   const merged = await fanOutCorpus(map, (t) =>
     t.db
@@ -204,9 +208,12 @@ export interface OperationCount {
   count: number;
 }
 
-export async function getOperationBreakdownLast7d(userId: string): Promise<OperationCount[]> {
+export async function getOperationBreakdownLast7d(
+  userId: string,
+  scope: ClientScope,
+): Promise<OperationCount[]> {
   const sevenDaysAgo = SEVEN_DAYS_AGO();
-  const map = await corpusMapForUser(userId);
+  const map = await corpusMapForUser(userId, scope);
 
   const rows = await fanOutCorpus(map, (t) =>
     t.db

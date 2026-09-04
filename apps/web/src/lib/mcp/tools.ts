@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { type ActivityRow, listActivity } from "../audit";
+import type { ClientScope } from "../tenancy";
 import {
   ComposeContextInputSchema,
   type ComposeContextResult,
@@ -53,6 +54,10 @@ export interface ToolHandlerCtx {
   // forward this into recordInvocation so the activity feed can scope to a
   // single chat. Null is fine — older clients and dev probes have none.
   sessionId: string | null;
+  // How far this API key may reach: a client id pins it to that one client,
+  // null means every client the user owns. Every handler below forwards it —
+  // it is what stops a key left in one client's repo from reading another's.
+  clientScope: ClientScope;
 }
 
 export interface ToolDefinition<I, O> {
@@ -67,7 +72,8 @@ const ingestTool: ToolDefinition<z.infer<typeof IngestPasteInputSchema>, IngestP
   description:
     "DIRECT-WRITE corpus tool. Most callers should use propose_document instead — that respects the user's review queue. Only use ingest_paste when the user explicitly asks to bypass the drafts pattern (e.g. 'ingest this directly without proposing'). Otherwise the corpus accumulates content the user never approved. Body is chunked, embedded with voyage-3-large, and persisted. Type is optional — omit to let Sonnet 4.6 auto-classify and extract externalId/date/references.",
   schema: IngestPasteInputSchema,
-  handler: (userId, input, ctx) => ingestPaste(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) =>
+    ingestPaste(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 const proposeDocumentTool: ToolDefinition<ProposeDocumentInput, CreatedDraft> = {
@@ -75,7 +81,8 @@ const proposeDocumentTool: ToolDefinition<ProposeDocumentInput, CreatedDraft> = 
   description:
     "MANDATORY FIRST CALL when the user message contains pasted structured content. Call this BEFORE any other tool — before Bash, Read, Grep, search, compose_context, before any analysis or recap. Detect distinct pieces in the input (separate tickets, chat threads, decisions, code blocks, transcribed screenshots) and call once per piece. NOT calling this before doing analysis is a contract violation. CRITICAL — pass `relatedExternalIds` for each piece: when multiple drafts come from the same captured input, each draft's relatedExternalIds must include the externalIds of the OTHER drafts in that batch (soft co-mention). Additionally include the externalIds of any specific tickets a draft is about (a teams_thread discussing ACME-1017 → relatedExternalIds: ['ACME-1017']; a decision for ACME-1042 → relatedExternalIds: ['ACME-1042']). Without this, with 1000 tickets the agent will never recall that these items co-occurred. After capture, acknowledge with `[Drafts queued: N (<short list>)]` and only then continue.",
   schema: ProposeDocumentInputSchema,
-  handler: (userId, input, ctx) => proposeDocument(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) =>
+    proposeDocument(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 const ListDraftsInputSchema = z.object({
@@ -89,7 +96,7 @@ const listDraftsTool: ToolDefinition<z.infer<typeof ListDraftsInputSchema>, Draf
   description:
     "List drafts for the active user. Defaults to all projects + all statuses. Pass projectSlug to scope to one project. Pass status='pending' to show only what's waiting for review (the most common case). Use this when the user asks 'qué tengo en draft', 'muéstrame los drafts pendientes', or before suggesting a batch approval.",
   schema: ListDraftsInputSchema,
-  handler: (userId, input) => listDrafts(userId, input),
+  handler: (userId, input, ctx) => listDrafts(userId, ctx.clientScope, input),
 };
 
 const ApproveDraftInputSchema = z.object({
@@ -128,7 +135,10 @@ const approveDraftTool: ToolDefinition<
     if (input.title !== undefined) edits.title = input.title;
     if (input.content !== undefined) edits.content = input.content;
     if (input.externalId !== undefined) edits.externalId = input.externalId;
-    return approveDraft(userId, input.draftId, edits, { sessionId: ctx.sessionId });
+    return approveDraft(userId, input.draftId, edits, {
+      sessionId: ctx.sessionId,
+      clientScope: ctx.clientScope,
+    });
   },
 };
 
@@ -145,7 +155,10 @@ const rejectDraftTool: ToolDefinition<
     "Discard a pending draft. The row stays in the database with status='rejected' (audit trail of what was proposed and not kept), but it never enters the corpus. Use when the user says 'no, descartá ese' or similar after reviewing a proposal.",
   schema: RejectDraftInputSchema,
   handler: async (userId, input, ctx) => {
-    await rejectDraft(userId, input.draftId, { sessionId: ctx.sessionId });
+    await rejectDraft(userId, input.draftId, {
+      sessionId: ctx.sessionId,
+      clientScope: ctx.clientScope,
+    });
     return { rejected: true as const, draftId: input.draftId };
   },
 };
@@ -156,7 +169,7 @@ const archiveDocumentTool: ToolDefinition<ArchiveDocumentInput, ArchiveDocumentR
     "Soft-delete a document from active corpus. Sets status='archived' — the document remains in the database (audit trail intact) but is excluded from search and compose_context. Pass projectSlug + externalId for normal docs (e.g. TICKET-1234) or projectSlug + documentId (uuid) when there is no external_id. ALWAYS confirm with the user listing exactly which doc(s) will be archived before calling this.",
   schema: ArchiveDocumentInputSchema,
   handler: (userId, input, ctx) =>
-    archiveDocumentByRef(userId, input, { sessionId: ctx.sessionId }),
+    archiveDocumentByRef(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 const ListProjectsInputSchema = z.object({}).optional();
@@ -166,7 +179,7 @@ const listProjectsTool: ToolDefinition<unknown, ProjectRow[]> = {
   description:
     "List all projects the active user owns, with client name, slug, doc/chunk counts, persistence flag and last-invocation timestamp. Use this when the user opens a fresh chat and you don't yet know which project they want to work on — present the list as a numbered menu and ask them to pick. Also use when the user asks 'qué proyectos tengo' or similar discovery questions.",
   schema: ListProjectsInputSchema as z.ZodTypeAny,
-  handler: (userId) => getProjectsForUser(userId),
+  handler: (userId, _input, ctx) => getProjectsForUser(userId, ctx.clientScope),
 };
 
 const ProjectOverviewInputSchema = z.object({
@@ -181,7 +194,7 @@ const projectOverviewTool: ToolDefinition<
   description:
     "Get a brief snapshot of a project: client + project name, canon flags (which sections have content), doc count by type, stakeholder count, pending drafts count, last 5 documents, last invocation timestamp. Use this RIGHT AFTER the user picks a project (from list_projects menu or by mentioning one) so they get context-on-arrival before starting real work. Keep the response short — 5-8 lines max.",
   schema: ProjectOverviewInputSchema,
-  handler: (userId, input) => getProjectOverview(userId, input.projectSlug),
+  handler: (userId, input, ctx) => getProjectOverview(userId, input.projectSlug, ctx.clientScope),
 };
 
 const SetTicketProgressInputSchema = z.object({
@@ -199,13 +212,17 @@ const setTicketProgressTool: ToolDefinition<
   description:
     "Update one of the 5 progress stages for a ticket: analysis (optional), design, build, tests, deployment. Each stage holds free-form text (the artifact: a short approach, a list of test classes, a PR URL, etc). Pass content=null to clear a stage. ALWAYS confirm with the user in natural language before calling this — show them what will be written and to which stage. Use this proactively as work progresses: after the user articulates the design approach, call with stage='design'; after they mention a PR is open, stage='deployment'; etc. Returns the full updated progress and the next active phase.",
   schema: SetTicketProgressInputSchema,
-  handler: (userId, input) =>
-    setTicketProgress(userId, {
-      projectSlug: input.projectSlug,
-      externalId: input.externalId,
-      stage: input.stage,
-      content: input.content,
-    }),
+  handler: (userId, input, ctx) =>
+    setTicketProgress(
+      userId,
+      {
+        projectSlug: input.projectSlug,
+        externalId: input.externalId,
+        stage: input.stage,
+        content: input.content,
+      },
+      ctx.clientScope,
+    ),
 };
 
 const GetTicketProgressInputSchema = z.object({
@@ -221,7 +238,8 @@ const getTicketProgressTool: ToolDefinition<
   description:
     "Read the 5-stage progress of a ticket: each stage's content (or null if empty), the active phase (next empty mandatory stage), and a compact pattern like 'A·D·B·_·_'. Use this at the start of a session resuming work on a known ticket — the user should know immediately at which stage we left off.",
   schema: GetTicketProgressInputSchema,
-  handler: (userId, input) => getTicketProgress(userId, input.projectSlug, input.externalId),
+  handler: (userId, input, ctx) =>
+    getTicketProgress(userId, input.projectSlug, input.externalId, ctx.clientScope),
 };
 
 const GetAgentContractInputSchema = z.object({}).optional();
@@ -239,7 +257,8 @@ const searchTool: ToolDefinition<SearchInput, SearchResult> = {
   description:
     "Semantic search over a project's corpus. Do NOT call this until you have first called propose_document for any structured content the user pasted in their current message — capture before search. Returns top-K chunks ordered by similarity with optional Voyage rerank-2 second pass. Filter by types/externalId/dateRange. Always scoped to one projectSlug; cross-project search is not supported.",
   schema: SearchInputSchema,
-  handler: (userId, input, ctx) => search(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) =>
+    search(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 const recordDecisionTool: ToolDefinition<RecordDecisionInput, IngestPasteResult> = {
@@ -247,7 +266,8 @@ const recordDecisionTool: ToolDefinition<RecordDecisionInput, IngestPasteResult>
   description:
     "Capture a project decision (an ADR-style statement of why we chose X) into the corpus as a `decision` document. Behaves like ingest_paste with type=decision pre-set; provide title and rationale body. Useful when the agent and user agreed on something the corpus should remember.",
   schema: RecordDecisionInputSchema,
-  handler: (userId, input) => recordDecision(userId, input),
+  handler: (userId, input, ctx) =>
+    recordDecision(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 const linkDocumentsTool: ToolDefinition<LinkDocumentsInput, unknown> = {
@@ -255,7 +275,8 @@ const linkDocumentsTool: ToolDefinition<LinkDocumentsInput, unknown> = {
   description:
     "Create an explicit relationship between two documents in the same project (e.g. TICKET-9001 supersedes ADR-0042, or TICKET-9001 depends_on TICKET-8870). Idempotent — re-running with the same triple (from, to, linkType) returns the existing link. Cross-project links are forbidden.",
   schema: LinkDocumentsInputSchema,
-  handler: (userId, input, ctx) => linkDocuments(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) =>
+    linkDocuments(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 const RecentActivityInputSchema = z.object({
@@ -276,18 +297,14 @@ const recentActivityTool: ToolDefinition<
     const scope = input.scope ?? "session";
     let projectId: string | undefined;
     if ((scope === "project" || input.projectSlug) && input.projectSlug) {
-      const { db, schema } = await import("../db");
-      const { and, eq } = await import("drizzle-orm");
-      const projectRows = await db
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .innerJoin(schema.clients, eq(schema.clients.id, schema.projects.clientId))
-        .where(and(eq(schema.clients.userId, userId), eq(schema.projects.slug, input.projectSlug)))
-        .limit(1);
-      projectId = projectRows[0]?.id;
+      // Through resolveProjectContext rather than a raw lookup, so a key
+      // pinned to one client cannot name another client's project here.
+      const { resolveProjectContext } = await import("../tenancy");
+      const project = await resolveProjectContext(userId, input.projectSlug, ctx.clientScope);
+      projectId = project.projectId;
     }
     const sessionId = scope === "session" ? (ctx.sessionId ?? undefined) : undefined;
-    const rows = await listActivity(userId, {
+    const rows = await listActivity(userId, ctx.clientScope, {
       projectId,
       sessionId,
       limit: input.limit ?? 30,
@@ -304,7 +321,8 @@ const composeContextTool: ToolDefinition<
   description:
     "FLAGSHIP. Assembles the structured context for working a ticket: project canon, focus document with frontmatter, linked docs grouped by type, RAG-retrieved chunks (reranked), stakeholder profiles, instructions_for_agent block. Do NOT call this until you have first called propose_document for any structured content the user pasted in their current message — capture before compose. No LLM call — pure structural composition. Provide either focusExternalId (known ticket) or focusText (free-form snippet).",
   schema: ComposeContextInputSchema,
-  handler: (userId, input, ctx) => composeContext(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) =>
+    composeContext(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 // Canon without a ticket. project_overview reports whether canon EXISTS;
@@ -316,7 +334,8 @@ const getCanonTool: ToolDefinition<z.infer<typeof GetCanonInputSchema>, GetCanon
   description:
     "Returns the binding canon for a project — conventions, guidelines and architecture (project-level, falling back to the canon domain) — plus stakeholders and the instructions_for_agent preamble. No focus document, no RAG, no LLM: cheap enough to call before you know which ticket you are working on, and you should, on every new conversation. Use compose_context instead once you have a specific ticket.",
   schema: GetCanonInputSchema,
-  handler: (userId, input, ctx) => getCanon(userId, input, { sessionId: ctx.sessionId }),
+  handler: (userId, input, ctx) =>
+    getCanon(userId, input, { sessionId: ctx.sessionId, clientScope: ctx.clientScope }),
 };
 
 export const TOOLS: ReadonlyArray<ToolDefinition<unknown, unknown>> = [

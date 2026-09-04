@@ -48,7 +48,10 @@ export default async function DraftsPage({ params, searchParams }: PageProps) {
   const projectBasePath = `/projects/${clientSlug}/${projectSlug}`;
   const draftsBasePath = `${projectBasePath}/drafts`;
   const requestedStatus =
-    sp.status === "approved" || sp.status === "rejected" || sp.status === "pending" || sp.status === "all"
+    sp.status === "approved" ||
+    sp.status === "rejected" ||
+    sp.status === "pending" ||
+    sp.status === "all"
       ? sp.status
       : "pending";
   const statusFilter = requestedStatus === "all" ? undefined : requestedStatus;
@@ -56,13 +59,13 @@ export default async function DraftsPage({ params, searchParams }: PageProps) {
   const queryFilter = sp.q && sp.q.length > 0 ? sp.q : undefined;
 
   const [drafts, typeCounts] = await Promise.all([
-    listDrafts(session.userId, {
+    listDrafts(session.userId, null, {
       projectSlug,
       status: statusFilter,
       type: typeFilter,
       query: queryFilter,
     }),
-    getDraftTypeCounts(session.userId, { projectSlug, status: statusFilter }),
+    getDraftTypeCounts(session.userId, null, { projectSlug, status: statusFilter }),
   ]);
 
   const totalForStatus = typeCounts.reduce((acc, t) => acc + t.count, 0);
@@ -85,14 +88,11 @@ export default async function DraftsPage({ params, searchParams }: PageProps) {
       </nav>
 
       <header className="mb-6 max-w-3xl">
-        <h1 className="text-2xl font-semibold text-zinc-100">
-          {project.projectName} · drafts
-        </h1>
+        <h1 className="text-2xl font-semibold text-zinc-100">{project.projectName} · drafts</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Documents the agent proposed during conversations. Nothing here is in the
-          corpus yet — review, approve or discard. Approved drafts run through the
-          normal ingest pipeline (chunking, embedding, auto-linking) and become real
-          documents.
+          Documents the agent proposed during conversations. Nothing here is in the corpus yet —
+          review, approve or discard. Approved drafts run through the normal ingest pipeline
+          (chunking, embedding, auto-linking) and become real documents.
         </p>
       </header>
 

@@ -52,10 +52,18 @@ export const apiKeys = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     keyHash: text("key_hash").notNull().unique(),
     label: text("label").notNull(),
+    // When set, this key can only reach that one client. NULL means every
+    // client the user owns — the behaviour every key had before scoping
+    // existed, so old keys keep working.
+    //
+    // The point is blast radius: the key sitting in the .mcp.json of the
+    // bakery's repo should not be able to read the bank's corpus if that
+    // laptop is lost.
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
     lastUsedAt: timestamp("last_used_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (t) => [index("api_keys_user_idx").on(t.userId)],
+  (t) => [index("api_keys_user_idx").on(t.userId), index("api_keys_client_idx").on(t.clientId)],
 );
 
 // Invite-only signup tokens. The owner of an existing account generates a

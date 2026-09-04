@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { callerFromHeaders } from "@/lib/caller";
 import {
   JSONRPC_INVALID_REQUEST,
   JSONRPC_PARSE_ERROR,
@@ -10,22 +11,20 @@ export const runtime = "nodejs";
 
 // JSON-RPC error envelope returned BEFORE we have a parsed id.
 function bareError(code: number, message: string): NextResponse {
-  return NextResponse.json(
-    { jsonrpc: "2.0", id: null, error: { code, message } },
-    { status: 200 },
-  );
+  return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code, message } }, { status: 200 });
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
   const h = await headers();
-  const userId = h.get("x-user-id");
-  if (!userId) {
+  const caller = callerFromHeaders(h);
+  if (!caller) {
     // Middleware should have populated this — defensive only.
     return NextResponse.json(
       { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized." } },
       { status: 401 },
     );
   }
+  const { userId, clientScope } = caller;
 
   // Streamable HTTP MCP clients send `mcp-session-id` on every request after
   // the initial handshake. Captured into the audit/activity log so users can
@@ -46,14 +45,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       return bareError(JSONRPC_INVALID_REQUEST, "Empty batch.");
     }
     const responses = await Promise.all(
-      body.map((item) => handleJsonRpcRequest(userId, item, { sessionId })),
+      body.map((item) => handleJsonRpcRequest(userId, item, { sessionId, clientScope })),
     );
     const filtered = responses.filter((r) => r !== null);
     if (filtered.length === 0) return new NextResponse(null, { status: 204 });
     return NextResponse.json(filtered);
   }
 
-  const response = await handleJsonRpcRequest(userId, body, { sessionId });
+  const response = await handleJsonRpcRequest(userId, body, { sessionId, clientScope });
   if (response === null) {
     // Notification — no response per JSON-RPC spec.
     return new NextResponse(null, { status: 204 });

@@ -52,7 +52,10 @@ export async function approveAction(
   if (externalId !== undefined) edits.externalId = externalId.length > 0 ? externalId : null;
 
   try {
-    const result = await approveDraft(session.userId, draftId, edits);
+    const result = await approveDraft(session.userId, draftId, edits, {
+      sessionId: null,
+      clientScope: null,
+    });
     revalidatePath(`${projectPath(clientSlug, projectSlug)}/drafts`);
     revalidatePath(projectPath(clientSlug, projectSlug));
     return {
@@ -80,7 +83,7 @@ export async function rejectAction(
   }
 
   try {
-    await rejectDraft(session.userId, draftId);
+    await rejectDraft(session.userId, draftId, { sessionId: null, clientScope: null });
     revalidatePath(`${projectPath(clientSlug, projectSlug)}/drafts`);
     return { status: "success", message: "Draft rejected." };
   } catch (err) {
@@ -116,7 +119,7 @@ export async function editAction(
   if (type) editInput.type = type as EditDraftInput["type"];
 
   try {
-    await editDraft(session.userId, draftId, editInput);
+    await editDraft(session.userId, draftId, editInput, null);
     revalidatePath(`${projectPath(clientSlug, projectSlug)}/drafts`);
     return { status: "success", message: "Draft updated." };
   } catch (err) {
