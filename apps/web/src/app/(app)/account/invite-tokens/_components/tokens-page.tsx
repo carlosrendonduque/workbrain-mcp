@@ -59,7 +59,9 @@ function RevokeButton({ label }: { label: string }) {
       type="submit"
       disabled={pending}
       onClick={(e) => {
-        if (!confirm(`Revoke "${label}"? Anyone holding the token will no longer be able to use it.`)) {
+        if (
+          !confirm(`Revoke "${label}"? Anyone holding the token will no longer be able to use it.`)
+        ) {
           e.preventDefault();
         }
       }}
@@ -74,9 +76,7 @@ function CreateForm() {
   const [state, formAction] = useActionState(createTokenAction, createInitial);
 
   const signupUrl =
-    state.status === "success"
-      ? `https://www.workbrain.app/signup?token=${state.rawToken}`
-      : null;
+    state.status === "success" ? `https://www.workbrain.app/signup?token=${state.rawToken}` : null;
 
   return (
     <div className="space-y-4">
@@ -151,9 +151,8 @@ function CreateForm() {
               <CopyButton value={signupUrl} />
             </div>
             <p className="mt-1 text-[11px] text-emerald-200/70">
-              Send the recipient this URL plus the email you want them to register with.
-              They open it, type their email, click sign up, and get their first API key
-              automatically.
+              Send the recipient this URL plus the email you want them to register with. They open
+              it, type their email, click sign up, and get their first API key automatically.
             </p>
           </div>
         </div>
@@ -203,9 +202,9 @@ export function InviteTokensPage({ tokens }: { tokens: SignupTokenRow[] }) {
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
         <h2 className="text-sm font-medium text-zinc-200">Generate an invite token</h2>
         <p className="mt-1 text-xs text-zinc-500">
-          Anyone you want to onboard needs a one-time token. Each token redeems for a fresh
-          user account fully isolated from yours. Optional expiry helps if you don't want
-          tokens lingering.
+          Anyone you want to onboard needs a one-time token. Each token redeems for a fresh user
+          account fully isolated from yours. Optional expiry helps if you don't want tokens
+          lingering.
         </p>
         <div className="mt-4">
           <CreateForm />

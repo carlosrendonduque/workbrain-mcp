@@ -68,7 +68,8 @@ export async function saveCanonAction(
 
     return {
       status: "success",
-      message: "Canon saved. Disk version may be stale — run `pnpm db:meta:sync` if you also edit `_meta/*.md` on disk.",
+      message:
+        "Canon saved. Disk version may be stale — run `pnpm db:meta:sync` if you also edit `_meta/*.md` on disk.",
       updatedAt: new Date().toISOString(),
     };
   } catch (err) {

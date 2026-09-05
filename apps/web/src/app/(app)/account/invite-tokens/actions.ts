@@ -1,11 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import {
-  SignupTokenError,
-  createSignupToken,
-  revokeSignupToken,
-} from "@/lib/signup-tokens";
+import { SignupTokenError, createSignupToken, revokeSignupToken } from "@/lib/signup-tokens";
 import { requireSession } from "@/lib/webapp-auth";
 
 export type CreateTokenState =
@@ -43,7 +39,8 @@ export async function createTokenAction(
   try {
     const created = await createSignupToken(session.userId, {
       label,
-      expiresInDays: Number.isFinite(expiresInDays) && expiresInDays !== undefined ? expiresInDays : undefined,
+      expiresInDays:
+        Number.isFinite(expiresInDays) && expiresInDays !== undefined ? expiresInDays : undefined,
     });
     revalidatePath(PATH);
     return { status: "success", rawToken: created.rawToken, label: created.label };

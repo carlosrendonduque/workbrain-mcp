@@ -166,18 +166,12 @@ export function PasteForm({
         </div>
       ) : null}
 
-      {state.status === "success" ? (
-        <IngestResult state={state} />
-      ) : null}
+      {state.status === "success" ? <IngestResult state={state} /> : null}
     </div>
   );
 }
 
-function IngestResult({
-  state,
-}: {
-  state: Extract<IngestActionState, { status: "success" }>;
-}) {
+function IngestResult({ state }: { state: Extract<IngestActionState, { status: "success" }> }) {
   const { result, clientSlug, projectSlug } = state;
   const ref = result.inferredExternalId ?? result.documentId;
   const detailHref = `/projects/${clientSlug}/${projectSlug}/${ref}`;
@@ -186,10 +180,7 @@ function IngestResult({
     <div className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm text-zinc-200">
       <div className="flex items-center justify-between">
         <p className="font-medium text-emerald-300">Document ingested</p>
-        <Link
-          href={detailHref}
-          className="text-xs text-indigo-300 hover:text-indigo-200"
-        >
+        <Link href={detailHref} className="text-xs text-indigo-300 hover:text-indigo-200">
           Open document →
         </Link>
       </div>
@@ -229,9 +220,7 @@ function IngestResult({
         {result.unmatchedReferences.length > 0 ? (
           <p>
             <span className="text-zinc-500">References without match in this project: </span>
-            <span className="text-amber-300">
-              {result.unmatchedReferences.join(", ")}
-            </span>
+            <span className="text-amber-300">{result.unmatchedReferences.join(", ")}</span>
           </p>
         ) : null}
       </div>

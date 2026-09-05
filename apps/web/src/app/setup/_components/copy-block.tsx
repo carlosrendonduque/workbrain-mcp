@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 
-export function CopyBlock({
-  value,
-  label,
-}: {
-  value: string;
-  label?: string;
-}) {
+export function CopyBlock({ value, label }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">

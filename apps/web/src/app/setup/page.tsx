@@ -79,9 +79,9 @@ export default function SetupPage() {
         </Link>
         <h1 className="mt-2 text-3xl font-semibold text-zinc-100">Setup</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          Connect WorkBrain to your IDE so its agent can use your project memory while
-          you work. Pick the path that matches your tooling — they all hit the same
-          remote MCP endpoint at <Inline>{MCP_URL}</Inline>.
+          Connect WorkBrain to your IDE so its agent can use your project memory while you work.
+          Pick the path that matches your tooling — they all hit the same remote MCP endpoint at{" "}
+          <Inline>{MCP_URL}</Inline>.
         </p>
       </header>
 
@@ -133,27 +133,24 @@ export default function SetupPage() {
 
       <H2 id="prerequisites">1. Prerequisites</H2>
       <P>
-        You need an API key (starts with <Inline>wbk_</Inline>). If you don't have one
-        yet, redeem an invitation at{" "}
+        You need an API key (starts with <Inline>wbk_</Inline>). If you don't have one yet, redeem
+        an invitation at{" "}
         <Link href="/signup" className="text-indigo-300 hover:underline">
           /signup
         </Link>{" "}
-        — you'll receive your key once. If you already have an account, create or
-        review keys at{" "}
+        — you'll receive your key once. If you already have an account, create or review keys at{" "}
         <Link href="/account/api-keys" className="text-indigo-300 hover:underline">
           /account/api-keys
         </Link>
         .
       </P>
       <Note>
-        We never display the raw key after creation. If you lose it, create another and
-        revoke the old one. There's no recovery path.
+        We never display the raw key after creation. If you lose it, create another and revoke the
+        old one. There's no recovery path.
       </Note>
 
       <H2 id="cursor">2. Cursor</H2>
-      <P>
-        Cursor has a 1-click install for MCP servers — no terminal, no JSON editing.
-      </P>
+      <P>Cursor has a 1-click install for MCP servers — no terminal, no JSON editing.</P>
       <H3>Option A — One-click (recommended)</H3>
       <P>
         Go to{" "}
@@ -161,8 +158,8 @@ export default function SetupPage() {
           /account/api-keys
         </Link>{" "}
         and click <strong>Create key</strong>. The success banner shows an{" "}
-        <strong>Add to Cursor</strong> button — that opens Cursor with the MCP config
-        already filled in. Confirm the prompt and you're done.
+        <strong>Add to Cursor</strong> button — that opens Cursor with the MCP config already filled
+        in. Confirm the prompt and you're done.
       </P>
       <H3>Option B — Manual fallback</H3>
       <P>
@@ -171,8 +168,7 @@ export default function SetupPage() {
       </P>
       <CopyBlock label="~/.cursor/mcp.json" value={CURSOR_JSON} />
       <P>
-        Replace <Inline>wbk_PASTE_YOUR_KEY_HERE</Inline> with your real key. Restart
-        Cursor.
+        Replace <Inline>wbk_PASTE_YOUR_KEY_HERE</Inline> with your real key. Restart Cursor.
       </P>
 
       <H2 id="claude-code-cli">3. Claude Code (CLI)</H2>
@@ -180,63 +176,54 @@ export default function SetupPage() {
       <H3>Step 1 — Install Claude Code</H3>
       <CopyBlock value={CLI_INSTALL} />
       <P>
-        Requires Node 20+ globally. On Linux/macOS the binary lands in your Node
-        prefix. Verify with <Inline>claude --version</Inline>.
+        Requires Node 20+ globally. On Linux/macOS the binary lands in your Node prefix. Verify with{" "}
+        <Inline>claude --version</Inline>.
       </P>
       <H3>Step 2 — Register WorkBrain at user scope</H3>
       <CopyBlock value={CLI_REGISTER} />
       <P>
         Replace <Inline>wbk_PASTE_YOUR_KEY_HERE</Inline> with your real key.{" "}
-        <Inline>--scope user</Inline> means the registration applies to{" "}
-        <em>any folder</em> you open Claude Code in — you don't need to repeat it per
-        project.
+        <Inline>--scope user</Inline> means the registration applies to <em>any folder</em> you open
+        Claude Code in — you don't need to repeat it per project.
       </P>
 
       <H2 id="claude-code-vscode">4. Claude Code (VS Code extension)</H2>
       <P>
-        The VS Code extension reads the same configuration as the CLI{" "}
-        (<Inline>~/.claude.json</Inline>), so registering once via the CLI covers both.
+        The VS Code extension reads the same configuration as the CLI (
+        <Inline>~/.claude.json</Inline>), so registering once via the CLI covers both.
       </P>
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-zinc-300">
         <li>Install the extension from the VS Code Marketplace ("Claude Code").</li>
+        <li>Run the CLI register command above, even if you only intend to use VS Code.</li>
         <li>
-          Run the CLI register command above, even if you only intend to use VS Code.
+          Reload the VS Code window (<Inline>Cmd/Ctrl+Shift+P</Inline> → "Reload Window") so the
+          extension picks up the new config.
         </li>
         <li>
-          Reload the VS Code window (<Inline>Cmd/Ctrl+Shift+P</Inline> → "Reload
-          Window") so the extension picks up the new config.
-        </li>
-        <li>
-          Open the Claude Code chat panel (right sidebar) and type <Inline>/mcp</Inline>{" "}
-          — workbrain should be listed with ✓ Connected.
+          Open the Claude Code chat panel (right sidebar) and type <Inline>/mcp</Inline> — workbrain
+          should be listed with ✓ Connected.
         </li>
       </ol>
 
       <H2 id="claude-desktop">5. Claude Desktop</H2>
       <P>
-        Claude Desktop reads its MCP config from{" "}
-        <Inline>claude_desktop_config.json</Inline>. To find the file:{" "}
-        <strong>Settings → Developer → Edit Config</strong>.
+        Claude Desktop reads its MCP config from <Inline>claude_desktop_config.json</Inline>. To
+        find the file: <strong>Settings → Developer → Edit Config</strong>.
       </P>
       <CopyBlock label="claude_desktop_config.json" value={CLAUDE_DESKTOP_JSON} />
       <P>
-        Replace <Inline>wbk_PASTE_YOUR_KEY_HERE</Inline> with your real key. Save the
-        file and restart Claude Desktop.
+        Replace <Inline>wbk_PASTE_YOUR_KEY_HERE</Inline> with your real key. Save the file and
+        restart Claude Desktop.
       </P>
 
       <H2 id="verify">6. Verify it works</H2>
       <P>From any folder (it's user-scoped, so any folder works):</P>
-      <CopyBlock
-        value={`cd /tmp && claude mcp list`}
-      />
+      <CopyBlock value={`cd /tmp && claude mcp list`} />
       <P>Expected output:</P>
-      <CopyBlock
-        label="output"
-        value={`workbrain: ${MCP_URL} (HTTP) - ✓ Connected`}
-      />
+      <CopyBlock label="output" value={`workbrain: ${MCP_URL} (HTTP) - ✓ Connected`} />
       <P>
-        Inside Claude Code (CLI or VS Code chat), type <Inline>/mcp</Inline>. The
-        workbrain server should be listed with five tools:
+        Inside Claude Code (CLI or VS Code chat), type <Inline>/mcp</Inline>. The workbrain server
+        should be listed with five tools:
       </P>
       <ul className="ml-5 mt-2 list-disc space-y-0.5 text-sm text-zinc-400">
         <li>
@@ -263,80 +250,80 @@ export default function SetupPage() {
           <Link href="/projects/new" className="text-indigo-300 hover:underline">
             /projects/new
           </Link>
-          . Pick a client slug (e.g. your customer) and project slug (e.g. the system
-          you're working on).
+          . Pick a client slug (e.g. your customer) and project slug (e.g. the system you're working
+          on).
         </li>
         <li>
-          Open the project in your IDE and ask Claude to ingest your first ticket. Plain
-          text:
+          Open the project in your IDE and ask Claude to ingest your first ticket. Plain text:
           <CopyBlock
             label="prompt"
             value={`Use workbrain.ingest_paste in projectSlug "<your-slug>" to save:\n\nTICKET-1234: <title>\n<paste body here>`}
           />
         </li>
         <li>
-          Once you have 2-3 docs, run <Inline>compose_context</Inline> on one and ask
-          for a plan. That's the moment WorkBrain pays off.
+          Once you have 2-3 docs, run <Inline>compose_context</Inline> on one and ask for a plan.
+          That's the moment WorkBrain pays off.
         </li>
       </ol>
       <P>
-        Don't try to seed everything at once. Add tickets as you work, decisions as you
-        make them, and canon (
-        <Inline>/projects/&lt;client&gt;/&lt;project&gt;/canon</Inline>) when you have
-        15 min between meetings.
+        Don't try to seed everything at once. Add tickets as you work, decisions as you make them,
+        and canon (<Inline>/projects/&lt;client&gt;/&lt;project&gt;/canon</Inline>) when you have 15
+        min between meetings.
       </P>
 
       <H2 id="troubleshooting">8. Troubleshooting</H2>
 
-      <H3><Inline>claude mcp list</Inline> doesn't show workbrain</H3>
+      <H3>
+        <Inline>claude mcp list</Inline> doesn't show workbrain
+      </H3>
       <P>
-        You may have run <Inline>claude mcp add</Inline> without{" "}
-        <Inline>--scope user</Inline> — that registers it only for the current folder.
-        Re-run the command with the flag. You can also inspect{" "}
-        <Inline>~/.claude.json</Inline> to confirm the entry is in <Inline>mcpServers</Inline>.
+        You may have run <Inline>claude mcp add</Inline> without <Inline>--scope user</Inline> —
+        that registers it only for the current folder. Re-run the command with the flag. You can
+        also inspect <Inline>~/.claude.json</Inline> to confirm the entry is in{" "}
+        <Inline>mcpServers</Inline>.
       </P>
 
-      <H3><Inline>workbrain</Inline> shows but says "Not connected" or 401</H3>
+      <H3>
+        <Inline>workbrain</Inline> shows but says "Not connected" or 401
+      </H3>
       <P>
-        Your API key is rejected. Possible causes: revoked, mistyped, or extra
-        whitespace when pasted. Verify the key is still active at{" "}
+        Your API key is rejected. Possible causes: revoked, mistyped, or extra whitespace when
+        pasted. Verify the key is still active at{" "}
         <Link href="/account/api-keys" className="text-indigo-300 hover:underline">
           /account/api-keys
         </Link>
-        ; if not, create a new one and re-run <Inline>claude mcp add</Inline> (Claude
-        Code overwrites the existing entry on re-add).
+        ; if not, create a new one and re-run <Inline>claude mcp add</Inline> (Claude Code
+        overwrites the existing entry on re-add).
       </P>
 
       <H3>Cursor "Add to Cursor" button doesn't open the app</H3>
       <P>
-        Browser blocked the deep link, or Cursor isn't installed. Use the manual JSON
-        fallback above (<Inline>~/.cursor/mcp.json</Inline>) and restart Cursor.
+        Browser blocked the deep link, or Cursor isn't installed. Use the manual JSON fallback above
+        (<Inline>~/.cursor/mcp.json</Inline>) and restart Cursor.
       </P>
 
       <H3>Tools call returns "project_not_found"</H3>
       <P>
-        The <Inline>projectSlug</Inline> you passed doesn't match any project under
-        your user. Check{" "}
+        The <Inline>projectSlug</Inline> you passed doesn't match any project under your user. Check{" "}
         <Link href="/projects" className="text-indigo-300 hover:underline">
           /projects
         </Link>{" "}
-        for the exact slugs (lowercase, dashes, no spaces). Cross-user projects are
-        invisible by design.
+        for the exact slugs (lowercase, dashes, no spaces). Cross-user projects are invisible by
+        design.
       </P>
 
       <H3>The agent ignores my canon / doesn't reference my conventions</H3>
       <P>
         Make sure you populated canon at{" "}
-        <Inline>/projects/&lt;client&gt;/&lt;project&gt;/canon</Inline>. The model
-        respects it best when called via <Inline>compose_context</Inline> — that
-        bundles canon explicitly. A bare <Inline>search</Inline> won't include it.
+        <Inline>/projects/&lt;client&gt;/&lt;project&gt;/canon</Inline>. The model respects it best
+        when called via <Inline>compose_context</Inline> — that bundles canon explicitly. A bare{" "}
+        <Inline>search</Inline> won't include it.
       </P>
 
       <hr className="my-12 border-zinc-800" />
 
       <p className="text-xs text-zinc-500">
-        Something off in this guide? Tell Carlos. We'll keep it updated as the platform
-        evolves.
+        Something off in this guide? Tell Carlos. We'll keep it updated as the platform evolves.
       </p>
     </main>
   );

@@ -80,9 +80,7 @@ function HiddenRoute(props: {
       <input type="hidden" name="projectSlug" value={props.projectSlug} />
       <input type="hidden" name="ref" value={props.documentRef} />
       <input type="hidden" name="thisDocPath" value={props.thisDocPath} />
-      {props.documentId ? (
-        <input type="hidden" name="documentId" value={props.documentId} />
-      ) : null}
+      {props.documentId ? <input type="hidden" name="documentId" value={props.documentId} /> : null}
     </>
   );
 }
@@ -135,9 +133,7 @@ function AddLinkForm(props: RouteProps) {
         className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-indigo-500"
       />
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-zinc-500">
-          Direction: this doc → target. Idempotent.
-        </p>
+        <p className="text-[11px] text-zinc-500">Direction: this doc → target. Idempotent.</p>
         <SubmitButton label="Add link" pendingLabel="Linking…" />
       </div>
       <StateBanner state={state} />
