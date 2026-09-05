@@ -22,6 +22,7 @@
     "db:stakeholders:sync": "tsx scripts/stakeholders-sync.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "tsx scripts/e2e-isolation.ts",
     "voyage:test": "tsx scripts/voyage-test.ts",
     "classifier:test": "tsx scripts/classifier-test.ts",
     "corpus:init": "tsx scripts/corpus-init.ts",
