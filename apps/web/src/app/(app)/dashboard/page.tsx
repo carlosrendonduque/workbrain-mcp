@@ -69,7 +69,7 @@ export default async function DashboardPage() {
     overview.successRateLast7d === null ? "—" : PERCENT.format(overview.successRateLast7d);
 
   return (
-    <div className="px-8 py-8">
+    <div className="px-4 py-6 sm:px-8 sm:py-8">
       <header className="mb-8 flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-100">Dashboard</h1>
