@@ -1,0 +1,62 @@
+# Typecheck, tests, lint and formatting on every push and pull request.
+#
+# The tests this protects include the ones that pin cross-client isolation —
+# remove the project filter from either retriever and ten of them fail. Until
+# now they only ran when someone remembered to run them, which over months
+# protects nothing.
+#
+# No database, no API keys, no secrets. Everything here runs offline: the
+# tests that need a connection string set a fake one and never connect, and
+# the query tests render SQL through drizzle's .toSQL() rather than executing
+# it. The suites that DO need real infrastructure (test:e2e, check:sessions)
+# are deliberately not here — they belong on a machine that has credentials.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A new push to the same branch makes the previous run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches .nvmrc and the engines field.
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Runs even if typecheck failed — one report of everything wrong beats
+      # discovering the next problem on the next push.
+      - name: Test
+        if: '!cancelled()'
+        run: pnpm test
+
+      - name: Lint
+        if: '!cancelled()'
+        run: pnpm lint
+
+      - name: Format
+        if: '!cancelled()'
+        run: pnpm format:check

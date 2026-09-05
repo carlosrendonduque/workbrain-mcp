@@ -134,30 +134,42 @@ function DraftCard({
               <input type="hidden" name="clientSlug" value={clientSlug} />
               <input type="hidden" name="projectSlug" value={projectSlug} />
               <div>
-                <label className="text-[10px] uppercase tracking-wide text-zinc-500">
+                <label
+                  htmlFor={`title-${draft.draftId}`}
+                  className="text-[10px] uppercase tracking-wide text-zinc-500"
+                >
                   Edit title
                 </label>
                 <input
+                  id={`title-${draft.draftId}`}
                   name="editTitle"
                   defaultValue={draft.proposedTitle}
                   className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-wide text-zinc-500">
+                <label
+                  htmlFor={`extid-${draft.draftId}`}
+                  className="text-[10px] uppercase tracking-wide text-zinc-500"
+                >
                   Edit external_id (leave empty for none)
                 </label>
                 <input
+                  id={`extid-${draft.draftId}`}
                   name="editExternalId"
                   defaultValue={draft.proposedExternalId ?? ""}
                   className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-xs text-zinc-100 outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-wide text-zinc-500">
+                <label
+                  htmlFor={`content-${draft.draftId}`}
+                  className="text-[10px] uppercase tracking-wide text-zinc-500"
+                >
                   Edit content
                 </label>
                 <textarea
+                  id={`content-${draft.draftId}`}
                   name="editContent"
                   defaultValue={draft.proposedContent}
                   rows={10}

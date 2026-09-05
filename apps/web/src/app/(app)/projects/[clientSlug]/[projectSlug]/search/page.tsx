@@ -112,6 +112,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
           name="q"
           defaultValue={query ?? ""}
           placeholder="What are you looking for?"
+          // biome-ignore lint/a11y/noAutofocus: this page exists to be typed into; focusing its single input is what a user expects
           autoFocus
           className="flex-1 min-w-[300px] rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-indigo-500"
         />
@@ -202,7 +203,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
               const ref = chunk.externalId ?? chunk.documentId;
               return (
                 <li
-                  key={`${chunk.documentId}-${idx}`}
+                  key={chunk.chunkId}
                   className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4"
                 >
                   <div className="flex items-center gap-2">

@@ -198,7 +198,7 @@ export async function classify(
   if (!block) {
     throw new ClassifierError(
       "no_tool_call",
-      "Classifier did not call classify_document. Stop reason: " + response.stop_reason,
+      `Classifier did not call classify_document. Stop reason: ${response.stop_reason}`,
       500,
     );
   }

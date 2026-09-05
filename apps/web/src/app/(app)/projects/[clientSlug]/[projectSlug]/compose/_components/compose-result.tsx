@@ -202,7 +202,7 @@ export function ComposeResult({
               const ref = chunk.externalId ?? chunk.documentId;
               return (
                 <li
-                  key={`${chunk.documentId}-${idx}`}
+                  key={chunk.chunkId}
                   className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"
                 >
                   <div className="flex items-center gap-2">

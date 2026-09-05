@@ -66,7 +66,7 @@ try {
   // front of the agent on every machine — a silent regression here is invisible
   // until someone notices the agent skipping the canon, so assert it.
   const instructions = client.getInstructions();
-  if (!instructions || !instructions.includes("get_canon")) {
+  if (!instructions?.includes("get_canon")) {
     throw new Error("server did not advertise instructions mentioning get_canon");
   }
   console.log(`✅ instructions advertised (${instructions.length} chars)`);
