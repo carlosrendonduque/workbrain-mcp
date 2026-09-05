@@ -112,42 +112,44 @@ export default async function DashboardPage() {
               <code className="font-mono text-zinc-300">pnpm db:seed:projects</code>.
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase tracking-wide text-zinc-500">
-                <tr>
-                  <th className="px-5 py-2 text-left font-medium">Project</th>
-                  <th className="px-5 py-2 text-right font-medium">Docs</th>
-                  <th className="px-5 py-2 text-right font-medium">Chunks</th>
-                  <th className="px-5 py-2 text-right font-medium">Last invocation</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/70">
-                {projects.map((p) => (
-                  <tr key={p.projectId} className="group hover:bg-zinc-900/40">
-                    <td className="px-5 py-3">
-                      <Link href={`/projects/${p.clientSlug}/${p.projectSlug}`} className="block">
-                        <div className="font-medium text-zinc-100 group-hover:text-indigo-300">
-                          {p.projectName}
-                        </div>
-                        <div className="font-mono text-xs text-zinc-500">
-                          {p.clientSlug}/{p.projectSlug}
-                          {p.persist ? "" : " · ephemeral"}
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
-                      {NUMBER.format(p.documentCount)}
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
-                      {NUMBER.format(p.chunkCount)}
-                    </td>
-                    <td className="px-5 py-3 text-right text-xs text-zinc-400">
-                      {formatRelative(p.lastInvocationAt)}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[34rem]">
+                <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                  <tr>
+                    <th className="px-5 py-2 text-left font-medium">Project</th>
+                    <th className="px-5 py-2 text-right font-medium">Docs</th>
+                    <th className="px-5 py-2 text-right font-medium">Chunks</th>
+                    <th className="px-5 py-2 text-right font-medium">Last invocation</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/70">
+                  {projects.map((p) => (
+                    <tr key={p.projectId} className="group hover:bg-zinc-900/40">
+                      <td className="px-5 py-3">
+                        <Link href={`/projects/${p.clientSlug}/${p.projectSlug}`} className="block">
+                          <div className="font-medium text-zinc-100 group-hover:text-indigo-300">
+                            {p.projectName}
+                          </div>
+                          <div className="font-mono text-xs text-zinc-500">
+                            {p.clientSlug}/{p.projectSlug}
+                            {p.persist ? "" : " · ephemeral"}
+                          </div>
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
+                        {NUMBER.format(p.documentCount)}
+                      </td>
+                      <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
+                        {NUMBER.format(p.chunkCount)}
+                      </td>
+                      <td className="px-5 py-3 text-right text-xs text-zinc-400">
+                        {formatRelative(p.lastInvocationAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 

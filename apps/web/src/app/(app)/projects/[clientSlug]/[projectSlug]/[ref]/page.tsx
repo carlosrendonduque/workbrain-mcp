@@ -220,18 +220,20 @@ export default async function DocumentDetailPage({ params }: PageProps) {
               <header className="border-b border-zinc-800 px-4 py-2.5">
                 <h2 className="text-sm font-medium text-zinc-200">Frontmatter</h2>
               </header>
-              <table className="w-full text-xs">
-                <tbody className="divide-y divide-zinc-800/70">
-                  {frontmatterEntries.map(([key, value]) => (
-                    <tr key={key}>
-                      <td className="w-40 px-4 py-2 align-top font-mono text-zinc-500">{key}</td>
-                      <td className="px-4 py-2 font-mono text-zinc-300 break-all">
-                        {renderFrontmatterValue(value)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[34rem]">
+                  <tbody className="divide-y divide-zinc-800/70">
+                    {frontmatterEntries.map(([key, value]) => (
+                      <tr key={key}>
+                        <td className="w-40 px-4 py-2 align-top font-mono text-zinc-500">{key}</td>
+                        <td className="px-4 py-2 font-mono text-zinc-300 break-all">
+                          {renderFrontmatterValue(value)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : null}
 

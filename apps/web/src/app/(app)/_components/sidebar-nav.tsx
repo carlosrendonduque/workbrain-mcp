@@ -14,14 +14,16 @@ export function SidebarNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
 
   return (
-    <nav className="flex flex-col gap-0.5 px-2 py-3">
+    // A row that scrolls sideways on a phone, a column from md up. Items keep
+    // their own width so the labels never wrap to two lines.
+    <nav className="flex gap-0.5 overflow-x-auto px-2 py-3 md:flex-col md:overflow-x-visible">
       {items.map((item) => {
         const isActive = item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href);
         if (item.disabled) {
           return (
             <span
               key={item.href}
-              className="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-zinc-600"
+              className="flex shrink-0 items-center justify-between gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-zinc-600"
               title="Coming in a later task"
             >
               <span>{item.label}</span>
@@ -37,7 +39,7 @@ export function SidebarNav({ items }: { items: NavItem[] }) {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm transition ${
+            className={`flex shrink-0 items-center justify-between gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition md:gap-0 ${
               isActive
                 ? "bg-zinc-800 text-zinc-100"
                 : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
