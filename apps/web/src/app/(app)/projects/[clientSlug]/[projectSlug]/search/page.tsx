@@ -206,7 +206,10 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
                   key={chunk.chunkId}
                   className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4"
                 >
-                  <div className="flex items-center gap-2">
+                  {/* Wraps on a phone: the badges hold one line, the title takes
+                      its own, the scores sit right-aligned below. Unwrapped it
+                      squeezed the title into a five-line column. */}
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-indigo-300">
                       #{idx + 1}
                     </span>
@@ -223,7 +226,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
                     ) : null}
                     <Link
                       href={`${projectBasePath}/${ref}`}
-                      className="font-medium text-zinc-100 hover:text-indigo-200"
+                      className="min-w-0 basis-full font-medium text-zinc-100 hover:text-indigo-200 sm:basis-auto"
                     >
                       {chunk.documentTitle}
                     </Link>
