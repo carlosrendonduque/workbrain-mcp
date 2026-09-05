@@ -42,17 +42,45 @@ place that has no reason to hold one.
 | `WORKBRAIN_CORPUS_PATH` / `_REMOTE` / `_BRANCH` | the git-backed corpus mirror is opt-in: `paste.ts` skips the write entirely when the config is absent. Vercel's filesystem is ephemeral, so a mirror there would be written and lost |
 | `NODE_ENV` | Vercel sets it. Setting it by hand is how a preview ends up believing it is production |
 
+## Importing the repo adopts .env.example
+
+Vercel reads `apps/web/.env.example` on import and creates a variable for
+every entry, using whatever value it finds there. The first import of this
+project came up pointing at `host-pooler.region.aws.neon.tech`, with
+`NODE_ENV=development` in production and a corpus mirror aimed at a path that
+does not exist on a serverless filesystem.
+
+`.env.example` therefore holds no values at all — only shapes, in comments.
+Keep it that way. A plausible placeholder does not stay a placeholder.
+
 ## Getting the values there
 
-Load them from `.env.local` with the CLI rather than by hand:
+Load them from `.env.local` with the CLI rather than by hand. Run it from
+`apps/web`, not the repo root: the link lives beside the Root Directory, and
+from anywhere else every command fails without saying why.
 
-    pnpm dlx vercel link
-    pnpm dlx vercel env pull            # confirm what is already set
-    pnpm dlx vercel env add DATABASE_URL production
+    cd apps/web
+    pnpm dlx vercel link --project workbrain-mcp-web
+    pnpm dlx vercel env ls
+    printf %s "$VALUE" | pnpm dlx vercel env add DATABASE_URL production
 
 Typing them is the failure mode: a truncated connection string fails clearly,
 but a truncated salt fails as "your API key is invalid" and sends you looking
 in the wrong place.
+
+`vercel link` appends `VERCEL_OIDC_TOKEN` to `.env.local`. It is short-lived
+and the file is ignored by git; leave it.
+
+## Deployment Protection is on
+
+Every deployment sits behind Vercel's SSO. An unauthenticated request gets a
+302 to `vercel.com/sso-api` and never reaches the app, so curl and any health
+check will report a redirect rather than a fault.
+
+Leave it on. This environment holds real client corpora, and a preview URL is
+guessable. Reaching it from outside a browser — an MCP client, a smoke test —
+needs a protection bypass token, issued per deployment, not the protection
+turned off.
 
 ## Which branch is production
 
