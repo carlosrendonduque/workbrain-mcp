@@ -2,12 +2,29 @@ import { neon } from "@neondatabase/serverless";
 import { type NeonHttpDatabase, drizzle } from "drizzle-orm/neon-http";
 import { schema } from "@workbrain/shared";
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  throw new Error("DATABASE_URL is not set");
-}
+export type WorkbrainDb = NeonHttpDatabase<typeof schema>;
 
-const sql = neon(url);
+let centralDb: WorkbrainDb | null = null;
+
+/**
+ * Built on first use, not on import.
+ *
+ * This module used to read DATABASE_URL and throw at import time. ES module
+ * imports are evaluated before any statement in the importing module, so a
+ * script that calls `dotenv.config()` on its first line had already crashed
+ * by the time that line ran — but only if something in its import graph
+ * pulled `db` as a VALUE. `import type` is erased, so half the scripts worked
+ * and half did not, for a reason invisible at the call site.
+ */
+function resolveCentral(): WorkbrainDb {
+  if (centralDb) return centralDb;
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is not set");
+  }
+  centralDb = drizzle(neon(url), { schema });
+  return centralDb;
+}
 
 /**
  * The central database. Holds everything that is NOT one client's content:
@@ -18,11 +35,23 @@ const sql = neon(url);
  * stakeholders, draft_documents, invocations) through this handle. Those
  * belong to a client and must go through `corpusDbFor`, or a client on a
  * dedicated database silently reads and writes the wrong place.
+ *
+ * A proxy, so that every `db.select(...)` call site reads the same as before
+ * while the connection itself is built on first use. Methods are bound to the
+ * real handle — drizzle's builders rely on `this`.
  */
-export const db = drizzle(sql, { schema });
-export { schema };
+export const db: WorkbrainDb = new Proxy({} as WorkbrainDb, {
+  get(_target, prop) {
+    const real = resolveCentral();
+    const value = Reflect.get(real, prop, real);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+  has(_target, prop) {
+    return Reflect.has(resolveCentral(), prop);
+  },
+});
 
-export type WorkbrainDb = NeonHttpDatabase<typeof schema>;
+export { schema };
 
 /**
  * The subset of a client row that decides where its corpus lives. Callers
