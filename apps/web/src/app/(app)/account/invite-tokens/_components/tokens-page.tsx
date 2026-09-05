@@ -219,55 +219,57 @@ export function InviteTokensPage({ tokens }: { tokens: SignupTokenRow[] }) {
         {tokens.length === 0 ? (
           <p className="px-5 py-6 text-sm text-zinc-500">No tokens yet.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-5 py-2 text-left font-medium">Label</th>
-                <th className="px-5 py-2 text-left font-medium">Status</th>
-                <th className="px-5 py-2 text-left font-medium">Created</th>
-                <th className="px-5 py-2 text-left font-medium">Expires</th>
-                <th className="px-5 py-2 text-left font-medium">Redeemed by</th>
-                <th className="px-5 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/70">
-              {tokens.map((t) => {
-                const status = tokenStatus(t);
-                return (
-                  <tr key={t.tokenId} className="hover:bg-zinc-900/30">
-                    <td className="px-5 py-3 font-medium text-zinc-100">{t.label}</td>
-                    <td className="px-5 py-3">
-                      <span
-                        className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${status.cls}`}
-                      >
-                        {status.label}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-xs text-zinc-400">
-                      {formatTimestamp(t.createdAt)}
-                    </td>
-                    <td className="px-5 py-3 text-xs text-zinc-400">
-                      {t.expiresAt ? formatTimestamp(t.expiresAt) : "never"}
-                    </td>
-                    <td className="px-5 py-3 text-xs text-zinc-400">
-                      {t.usedByEmail ? (
-                        <span className="font-mono text-zinc-300">{t.usedByEmail}</span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      {t.usedByEmail ? (
-                        <span className="text-[11px] text-zinc-600">—</span>
-                      ) : (
-                        <RevokeForm tokenId={t.tokenId} label={t.label} />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[34rem]">
+              <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                <tr>
+                  <th className="px-5 py-2 text-left font-medium">Label</th>
+                  <th className="px-5 py-2 text-left font-medium">Status</th>
+                  <th className="px-5 py-2 text-left font-medium">Created</th>
+                  <th className="px-5 py-2 text-left font-medium">Expires</th>
+                  <th className="px-5 py-2 text-left font-medium">Redeemed by</th>
+                  <th className="px-5 py-2 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/70">
+                {tokens.map((t) => {
+                  const status = tokenStatus(t);
+                  return (
+                    <tr key={t.tokenId} className="hover:bg-zinc-900/30">
+                      <td className="px-5 py-3 font-medium text-zinc-100">{t.label}</td>
+                      <td className="px-5 py-3">
+                        <span
+                          className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${status.cls}`}
+                        >
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-xs text-zinc-400">
+                        {formatTimestamp(t.createdAt)}
+                      </td>
+                      <td className="px-5 py-3 text-xs text-zinc-400">
+                        {t.expiresAt ? formatTimestamp(t.expiresAt) : "never"}
+                      </td>
+                      <td className="px-5 py-3 text-xs text-zinc-400">
+                        {t.usedByEmail ? (
+                          <span className="font-mono text-zinc-300">{t.usedByEmail}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        {t.usedByEmail ? (
+                          <span className="text-[11px] text-zinc-600">—</span>
+                        ) : (
+                          <RevokeForm tokenId={t.tokenId} label={t.label} />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

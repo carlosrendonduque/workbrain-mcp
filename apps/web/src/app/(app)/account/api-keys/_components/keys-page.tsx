@@ -382,46 +382,48 @@ export function ApiKeysPage({ keys, clients }: { keys: ApiKeyRow[]; clients: Cli
         {keys.length === 0 ? (
           <p className="px-5 py-6 text-sm text-zinc-500">No keys yet.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-5 py-2 text-left font-medium">Label</th>
-                <th className="px-5 py-2 text-left font-medium">Can reach</th>
-                <th className="px-5 py-2 text-left font-medium">Hash fingerprint</th>
-                <th className="px-5 py-2 text-left font-medium">Created</th>
-                <th className="px-5 py-2 text-left font-medium">Last used</th>
-                <th className="px-5 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/70">
-              {keys.map((k) => (
-                <tr key={k.apiKeyId} className="hover:bg-zinc-900/30">
-                  <td className="px-5 py-3 font-medium text-zinc-100">{k.label}</td>
-                  <td className="px-5 py-3 text-xs">
-                    {k.clientSlug ? (
-                      <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-200">
-                        {k.clientSlug}
-                      </span>
-                    ) : (
-                      <span className="text-zinc-500">every client</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 font-mono text-xs text-zinc-500">
-                    {k.hashFingerprint}…
-                  </td>
-                  <td className="px-5 py-3 text-xs text-zinc-400">
-                    {formatTimestamp(k.createdAt)}
-                  </td>
-                  <td className="px-5 py-3 text-xs text-zinc-400">
-                    {formatTimestamp(k.lastUsedAt)}
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <RevokeForm apiKeyId={k.apiKeyId} label={k.label} />
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[34rem]">
+              <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                <tr>
+                  <th className="px-5 py-2 text-left font-medium">Label</th>
+                  <th className="px-5 py-2 text-left font-medium">Can reach</th>
+                  <th className="px-5 py-2 text-left font-medium">Hash fingerprint</th>
+                  <th className="px-5 py-2 text-left font-medium">Created</th>
+                  <th className="px-5 py-2 text-left font-medium">Last used</th>
+                  <th className="px-5 py-2 text-right font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/70">
+                {keys.map((k) => (
+                  <tr key={k.apiKeyId} className="hover:bg-zinc-900/30">
+                    <td className="px-5 py-3 font-medium text-zinc-100">{k.label}</td>
+                    <td className="px-5 py-3 text-xs">
+                      {k.clientSlug ? (
+                        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-200">
+                          {k.clientSlug}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500">every client</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 font-mono text-xs text-zinc-500">
+                      {k.hashFingerprint}…
+                    </td>
+                    <td className="px-5 py-3 text-xs text-zinc-400">
+                      {formatTimestamp(k.createdAt)}
+                    </td>
+                    <td className="px-5 py-3 text-xs text-zinc-400">
+                      {formatTimestamp(k.lastUsedAt)}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <RevokeForm apiKeyId={k.apiKeyId} label={k.label} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

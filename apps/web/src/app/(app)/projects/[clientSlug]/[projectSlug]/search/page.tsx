@@ -114,7 +114,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
           placeholder="What are you looking for?"
           // biome-ignore lint/a11y/noAutofocus: this page exists to be typed into; focusing its single input is what a user expects
           autoFocus
-          className="flex-1 min-w-[300px] rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-indigo-500"
+          className="flex-1 min-w-[12rem] rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-indigo-500"
         />
         <button
           type="submit"

@@ -34,50 +34,52 @@ export default async function ProjectsIndexPage() {
           create your first one.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
-          <table className="w-full text-sm">
-            <thead className="text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-5 py-2 text-left font-medium">Project</th>
-                <th className="px-5 py-2 text-right font-medium">Docs</th>
-                <th className="px-5 py-2 text-right font-medium">Chunks</th>
-                <th className="px-5 py-2 text-right font-medium">Persist</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/70">
-              {projects.map((p) => (
-                <tr key={p.projectId} className="group hover:bg-zinc-900/40">
-                  <td className="px-5 py-3">
-                    <Link href={`/projects/${p.clientSlug}/${p.projectSlug}`} className="block">
-                      <div className="font-medium text-zinc-100 group-hover:text-indigo-300">
-                        {p.projectName}
-                      </div>
-                      <div className="font-mono text-xs text-zinc-500">
-                        {p.clientSlug}/{p.projectSlug}
-                      </div>
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
-                    {NUMBER.format(p.documentCount)}
-                  </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
-                    {NUMBER.format(p.chunkCount)}
-                  </td>
-                  <td className="px-5 py-3 text-right text-xs">
-                    {p.persist ? (
-                      <span className="rounded border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">
-                        persist
-                      </span>
-                    ) : (
-                      <span className="rounded border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-amber-300">
-                        ephemeral
-                      </span>
-                    )}
-                  </td>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[34rem]">
+              <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                <tr>
+                  <th className="px-5 py-2 text-left font-medium">Project</th>
+                  <th className="px-5 py-2 text-right font-medium">Docs</th>
+                  <th className="px-5 py-2 text-right font-medium">Chunks</th>
+                  <th className="px-5 py-2 text-right font-medium">Persist</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/70">
+                {projects.map((p) => (
+                  <tr key={p.projectId} className="group hover:bg-zinc-900/40">
+                    <td className="px-5 py-3">
+                      <Link href={`/projects/${p.clientSlug}/${p.projectSlug}`} className="block">
+                        <div className="font-medium text-zinc-100 group-hover:text-indigo-300">
+                          {p.projectName}
+                        </div>
+                        <div className="font-mono text-xs text-zinc-500">
+                          {p.clientSlug}/{p.projectSlug}
+                        </div>
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
+                      {NUMBER.format(p.documentCount)}
+                    </td>
+                    <td className="px-5 py-3 text-right tabular-nums text-zinc-300">
+                      {NUMBER.format(p.chunkCount)}
+                    </td>
+                    <td className="px-5 py-3 text-right text-xs">
+                      {p.persist ? (
+                        <span className="rounded border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">
+                          persist
+                        </span>
+                      ) : (
+                        <span className="rounded border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-amber-300">
+                          ephemeral
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
