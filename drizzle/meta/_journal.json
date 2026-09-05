@@ -92,6 +92,13 @@
       "when": 1788585996544,
       "tag": "0012_destruction_certificates",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788585997544,
+      "tag": "0013_chunk_text_search",
+      "breakpoints": true
     }
   ]
 }
