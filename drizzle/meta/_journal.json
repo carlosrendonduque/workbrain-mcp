@@ -85,6 +85,13 @@
       "when": 1788525601730,
       "tag": "0011_chunk_embedding_model",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788585996544,
+      "tag": "0012_destruction_certificates",
+      "breakpoints": true
     }
   ]
 }
