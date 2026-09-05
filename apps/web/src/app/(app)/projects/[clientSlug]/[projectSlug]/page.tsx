@@ -77,7 +77,7 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
   const basePath = `/projects/${clientSlug}/${projectSlug}`;
 
   return (
-    <div className="px-8 py-8">
+    <div className="px-4 py-6 sm:px-8 sm:py-8">
       <nav className="mb-2 text-xs text-zinc-500">
         <Link href="/projects" className="hover:text-zinc-300">
           Corpus
@@ -88,7 +88,7 @@ export default async function ProjectCorpusPage({ params, searchParams }: PagePr
         <span className="font-mono text-zinc-300">{project.projectSlug}</span>
       </nav>
 
-      <header className="mb-6 flex items-end justify-between">
+      <header className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-100">{project.projectName}</h1>
           <p className="mt-1 text-sm text-zinc-400">

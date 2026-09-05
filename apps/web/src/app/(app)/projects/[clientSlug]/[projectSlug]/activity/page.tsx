@@ -65,7 +65,7 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
   const projectBasePath = `/projects/${clientSlug}/${projectSlug}`;
 
   return (
-    <div className="px-8 py-8">
+    <div className="px-4 py-6 sm:px-8 sm:py-8">
       <nav className="mb-2 text-xs text-zinc-500">
         <Link href="/projects" className="hover:text-zinc-300">
           Projects

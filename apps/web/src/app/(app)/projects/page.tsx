@@ -11,8 +11,8 @@ export default async function ProjectsIndexPage() {
   const projects = await getProjectsForUser(session.userId, null);
 
   return (
-    <div className="px-8 py-8">
-      <header className="mb-6 flex items-end justify-between">
+    <div className="px-4 py-6 sm:px-8 sm:py-8">
+      <header className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-100">Projects</h1>
           <p className="mt-1 text-sm text-zinc-400">
@@ -34,7 +34,7 @@ export default async function ProjectsIndexPage() {
           create your first one.
         </div>
       ) : (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40">
+        <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[34rem]">
               <thead className="text-xs uppercase tracking-wide text-zinc-500">

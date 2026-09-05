@@ -31,7 +31,7 @@ export default async function CanonsListPage() {
   const domains = await listCanonDomainsForUser(session.userId);
 
   return (
-    <div className="px-8 py-8">
+    <div className="px-4 py-6 sm:px-8 sm:py-8">
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">Canons</h1>
         <p className="mt-1 text-sm text-zinc-400">

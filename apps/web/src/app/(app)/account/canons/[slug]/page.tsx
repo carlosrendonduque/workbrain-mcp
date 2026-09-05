@@ -17,7 +17,7 @@ export default async function CanonDomainEditPage({ params }: PageProps) {
   if (!domain) notFound();
 
   return (
-    <div className="px-8 py-8">
+    <div className="px-4 py-6 sm:px-8 sm:py-8">
       <nav className="mb-2 text-xs text-zinc-500">
         <Link href="/account/canons" className="hover:text-zinc-300">
           Canons

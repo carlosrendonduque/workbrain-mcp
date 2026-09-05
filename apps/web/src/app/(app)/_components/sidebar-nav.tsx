@@ -23,7 +23,7 @@ export function SidebarNav({ items }: { items: NavItem[] }) {
           return (
             <span
               key={item.href}
-              className="flex shrink-0 items-center justify-between gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-zinc-600"
+              className="flex shrink-0 items-center justify-between gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-zinc-600 md:gap-0"
               title="Coming in a later task"
             >
               <span>{item.label}</span>
