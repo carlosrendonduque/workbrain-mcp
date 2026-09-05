@@ -37,8 +37,19 @@ const users = await db.select().from(schema.users).where(eq(schema.users.email, 
 const user = users[0];
 if (!user) throw new Error(`No user ${email}. Run db:seed:isolation first.`);
 
-const meta = { sessionId: `e2e-${Date.now()}`, clientScope: null };
 const stamp = Date.now().toString().slice(-6);
+
+// A separate session id per project, on purpose.
+//
+// Step 3 searches a second client's project. With one shared session id that
+// is, correctly, a session that touched two clients — and check:sessions
+// would report it forever, on the very data sheet handed to the client. The
+// act of verifying isolation would keep polluting the evidence of isolation.
+//
+// Splitting the ids keeps the record truthful: no real chat here spanned two
+// clients, and the probe is not pretending to be one.
+const sourceMeta = { sessionId: `e2e-source-${stamp}`, clientScope: null };
+const probeMeta = { sessionId: `e2e-probe-${stamp}`, clientScope: null };
 
 // Deliberately distinctive: if this leaks across clients, it is unmistakable.
 const content = `# ZENIT-${stamp} — Rate limiting on the public booking endpoint
@@ -55,7 +66,7 @@ console.log(`\n[1] Ingesting into ${SOURCE_PROJECT} — classify, chunk, embed, 
 const ingested = await ingestPaste(
   user.id,
   { projectSlug: SOURCE_PROJECT, title: `Rate limiting ZENIT-${stamp}`, content },
-  meta,
+  sourceMeta,
 );
 console.log(
   `    document ${ingested.documentId.slice(0, 8)} · ${ingested.chunkCount} chunk(s) · ` +
@@ -67,7 +78,7 @@ console.log(
 const question = "how do we stop one customer from flooding the API?";
 
 console.log(`\n[2] Searching ${SOURCE_PROJECT} with different wording`);
-const found = await search(user.id, { query: question, projectSlug: SOURCE_PROJECT }, meta);
+const found = await search(user.id, { query: question, projectSlug: SOURCE_PROJECT }, sourceMeta);
 console.log(`    ${found.chunks.length} hit(s), reranked: ${found.reranked}`);
 for (const c of found.chunks.slice(0, 2)) {
   console.log(
@@ -80,7 +91,7 @@ if (found.chunks.length === 0) {
 }
 
 console.log(`\n[3] Same question from ${OTHER_PROJECT} — a different client`);
-const leaked = await search(user.id, { query: question, projectSlug: OTHER_PROJECT }, meta);
+const leaked = await search(user.id, { query: question, projectSlug: OTHER_PROJECT }, probeMeta);
 console.log(`    ${leaked.chunks.length} hit(s)`);
 if (leaked.chunks.length > 0) {
   console.error("    ❌ CROSS-CLIENT LEAK. Stop and fix this before anything else.");
