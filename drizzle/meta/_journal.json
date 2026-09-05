@@ -99,6 +99,13 @@
       "when": 1788585997544,
       "tag": "0013_chunk_text_search",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788585998544,
+      "tag": "0014_documents_unique_external_id",
+      "breakpoints": true
     }
   ]
 }

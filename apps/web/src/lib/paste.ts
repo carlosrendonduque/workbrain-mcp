@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
@@ -60,6 +60,8 @@ export interface AutoLink {
 
 export interface IngestPasteResult {
   documentId: string;
+  /** True when an existing document with this external id was updated. */
+  replaced: boolean;
   path: string;
   frontmatter: Record<string, unknown>;
   chunkCount: number;
@@ -331,25 +333,80 @@ export async function ingestPaste(
       writtenRelativePath = written.relativePath;
     }
 
-    const inserted = await projectInfo.corpusDb
-      .insert(schema.documents)
-      .values({
-        projectId: projectInfo.projectId,
-        type: finalType,
-        externalId: finalExternalId ?? null,
-        path: relativePath,
-        title: input.title,
-        content: input.content,
-        frontmatter,
-        status: input.status ?? null,
-      })
-      .returning({ id: schema.documents.id });
+    // A ticket that already exists is UPDATED, not inserted again.
+    //
+    // Re-ingesting is the normal case, not an edge one: a ticket gains
+    // comments, changes status, gets pasted again. Inserting a second row
+    // left two documents sharing an external id, both feeding search, and
+    // compose_context picking between them non-deterministically — so an
+    // agent could be handed the older version with nothing to indicate it.
+    //
+    // Only possible when there is an external id to match on. A document
+    // without one has no identity to reconcile against, so it inserts.
+    const existing = finalExternalId
+      ? (
+          await projectInfo.corpusDb
+            .select({ id: schema.documents.id, progress: schema.documents.progress })
+            .from(schema.documents)
+            .where(
+              and(
+                eq(schema.documents.projectId, projectInfo.projectId),
+                eq(schema.documents.externalId, finalExternalId),
+              ),
+            )
+            .limit(1)
+        )[0]
+      : undefined;
 
-    const documentRow = inserted[0];
-    if (!documentRow) {
-      throw new IngestError("document_insert_failed", "Failed to insert document row", 500);
+    let documentId: string;
+    if (existing) {
+      await projectInfo.corpusDb
+        .update(schema.documents)
+        .set({
+          type: finalType,
+          path: relativePath,
+          title: input.title,
+          content: input.content,
+          frontmatter,
+          status: input.status ?? null,
+          updatedAt: sql`now()`,
+          // `progress` is deliberately not touched. The five ticket stages
+          // are what the user recorded about their own work, not content
+          // that arrived with the paste — re-pasting the ticket must not
+          // erase them.
+        })
+        .where(eq(schema.documents.id, existing.id));
+      documentId = existing.id;
+
+      // The content changed, so its vectors are stale. Delete before
+      // re-embedding rather than after: a crash in between leaves a document
+      // with no chunks, which is visibly wrong, instead of a document with
+      // two generations of chunks, which is invisibly wrong.
+      await projectInfo.corpusDb
+        .delete(schema.chunks)
+        .where(eq(schema.chunks.documentId, documentId));
+    } else {
+      const inserted = await projectInfo.corpusDb
+        .insert(schema.documents)
+        .values({
+          projectId: projectInfo.projectId,
+          type: finalType,
+          externalId: finalExternalId ?? null,
+          path: relativePath,
+          title: input.title,
+          content: input.content,
+          frontmatter,
+          status: input.status ?? null,
+        })
+        .returning({ id: schema.documents.id });
+
+      const documentRow = inserted[0];
+      if (!documentRow) {
+        throw new IngestError("document_insert_failed", "Failed to insert document row", 500);
+      }
+      documentId = documentRow.id;
     }
-    const documentId = documentRow.id;
+    const replacedExisting = existing !== undefined;
 
     const chunks = chunkMarkdown(input.content);
     let chunkCount = 0;
@@ -448,6 +505,7 @@ export async function ingestPaste(
 
     return {
       documentId,
+      replaced: replacedExisting,
       path: relativePath,
       frontmatter,
       chunkCount,

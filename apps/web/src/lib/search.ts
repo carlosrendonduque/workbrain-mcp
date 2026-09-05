@@ -345,25 +345,37 @@ export async function search(
     ).map((f) => f.item);
 
     let chunks: SearchChunk[];
+    let reranked = false;
     if (useRerank && candidates.length > 1) {
-      const out = await rerank(
-        input.query,
-        candidates.map((c) => c.text),
-        topK,
-      );
-      rerankUsage = out.usage;
-      rerankCost = rerankCostUsd(out.usage);
-      chunks = out.hits.map((hit) => {
-        const candidate = candidates[hit.index];
-        if (!candidate) {
-          throw new SearchError(
-            "rerank_index_out_of_range",
-            `Rerank returned index ${hit.index} but only ${candidates.length} candidates were submitted.`,
-            500,
-          );
-        }
-        return { ...candidate, rerankScore: hit.relevanceScore };
-      });
+      try {
+        const out = await rerank(
+          input.query,
+          candidates.map((c) => c.text),
+          topK,
+        );
+        rerankUsage = out.usage;
+        rerankCost = rerankCostUsd(out.usage);
+        chunks = out.hits.map((hit) => {
+          const candidate = candidates[hit.index];
+          if (!candidate) {
+            throw new SearchError(
+              "rerank_index_out_of_range",
+              `Rerank returned index ${hit.index} but only ${candidates.length} candidates were submitted.`,
+              500,
+            );
+          }
+          return { ...candidate, rerankScore: hit.relevanceScore };
+        });
+        reranked = true;
+      } catch (err) {
+        // Reranking improves the order; it is not what makes results
+        // correct. The fused candidates are already in a sensible order and
+        // sitting in memory, so a hiccup at Voyage degrades the ranking
+        // instead of failing the search — and compose_context, which calls
+        // through here, keeps working.
+        console.error("rerank failed, falling back to fused order:", err);
+        chunks = candidates.slice(0, topK);
+      }
     } else {
       chunks = candidates.slice(0, topK);
     }
@@ -391,8 +403,10 @@ export async function search(
     });
 
     return {
+      // Reports what actually happened, not what was requested — a caller
+      // that logs `reranked: true` after a failed rerank is being lied to.
       chunks,
-      reranked: useRerank && candidates.length > 1,
+      reranked,
       rerankCostUsd: rerankCost,
     };
   } catch (err) {
