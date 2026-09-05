@@ -150,7 +150,7 @@ async function main(): Promise<void> {
   step(4, "Replicating the registry rows the corpus points at");
   await replicateRegistry(target, registry);
   console.log(
-    `    1 client + ${registry.projects.length} project(s). Nothing reads these; they exist so the foreign keys resolve.`,
+    `    1 user + 1 client + ${registry.projects.length} project(s). Nothing reads these; they exist so the foreign keys resolve.`,
   );
 
   step(5, "Copying the corpus");

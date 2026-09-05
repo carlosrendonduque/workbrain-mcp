@@ -13,7 +13,12 @@
  *
  * Idempotent: rerunning reuses whatever already exists.
  *
- *   pnpm --filter @workbrain/web db:seed:isolation [email]
+ *   pnpm --filter @workbrain/web db:seed:isolation [email] [--docs N]
+ *
+ * `--docs N` fills each project with N synthetic documents and their chunks.
+ * The vectors are made up — nothing here calls an embedding API — because the
+ * point is to give `db:isolate` real rows to move, verify and purge. Testing
+ * that path should not require credentials or burn credits.
  */
 
 import { Pool } from "@neondatabase/serverless";
@@ -29,7 +34,20 @@ if (!url) {
   throw new Error("DATABASE_URL_UNPOOLED is not set in apps/web/.env.local");
 }
 
-const email = process.argv[2] ?? "dev@workbrain.local";
+const args = process.argv.slice(2);
+const email = args.find((a) => !a.startsWith("--")) ?? "dev@workbrain.local";
+const docsFlag = args.indexOf("--docs");
+const docsPerProject = docsFlag === -1 ? 0 : Number(args[docsFlag + 1] ?? 3);
+if (!Number.isFinite(docsPerProject) || docsPerProject < 0) {
+  throw new Error("--docs needs a non-negative number");
+}
+
+const EMBEDDING_DIMENSIONS = 1024;
+
+/** A deterministic pretend vector. Never sent anywhere; only stored and moved. */
+function fakeVector(seed: number): number[] {
+  return Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => Math.sin(seed + i) / 2);
+}
 
 const DOMAIN = { slug: "salesforce", name: "Salesforce" };
 
@@ -38,13 +56,19 @@ const CLIENTS = [
     slug: "leozenit",
     name: "ZenIT",
     note: "shared — the low-sensitivity pilot",
-    projects: [{ slug: "zenit-web", name: "ZenIT web" }],
+    projects: [
+      { slug: "zenit-web", name: "ZenIT web" },
+      { slug: "zenit-crm", name: "ZenIT CRM" },
+    ],
   },
   {
     slug: "testbank",
     name: "Test Bank",
     note: "the one to move to its own database",
-    projects: [{ slug: "vault", name: "Vault" }],
+    projects: [
+      { slug: "vault", name: "Vault" },
+      { slug: "ledger", name: "Ledger" },
+    ],
   },
 ];
 
@@ -129,8 +153,53 @@ async function main(): Promise<void> {
         .insert(schema.projects)
         .values({ clientId, domainId, slug: project.slug, name: project.name })
         .returning({ id: schema.projects.id });
-      if (!inserted[0]) throw new Error(`failed to insert project ${project.slug}`);
+      const projectId = inserted[0]?.id;
+      if (!projectId) throw new Error(`failed to insert project ${project.slug}`);
       console.log(`  project: ${project.slug} (created)`);
+
+      if (docsPerProject > 0) {
+        for (let d = 1; d <= docsPerProject; d += 1) {
+          const externalId = `${client.slug.toUpperCase()}-${1000 + d}`;
+          const doc = await db
+            .insert(schema.documents)
+            .values({
+              projectId,
+              type: "ticket",
+              externalId,
+              path: `${client.slug}/${project.slug}/tickets/${externalId}.md`,
+              title: `Synthetic ticket ${externalId}`,
+              content: `# ${externalId}\n\nSeeded so the isolation tooling has rows to move.`,
+              frontmatter: { type: "ticket", external_id: externalId, seeded: true },
+            })
+            .returning({ id: schema.documents.id });
+          const documentId = doc[0]?.id;
+          if (!documentId) throw new Error("failed to insert synthetic document");
+
+          await db.insert(schema.chunks).values(
+            [0, 1].map((i) => ({
+              documentId,
+              projectId,
+              clientId,
+              type: "ticket",
+              chunkIndex: i,
+              text: `Chunk ${i} of ${externalId}.`,
+              tokenCount: 12,
+              embedding: fakeVector(d * 10 + i),
+              embeddingModel: "seeded-fake",
+            })),
+          );
+
+          await db.insert(schema.invocations).values({
+            userId,
+            projectId,
+            operation: "search",
+            sessionId: `seed-session-${client.slug}`,
+            userPrompt: `seeded lookup for ${externalId}`,
+            status: "success",
+          });
+        }
+        console.log(`    + ${docsPerProject} document(s), ${docsPerProject * 2} chunk(s)`);
+      }
     }
   }
 

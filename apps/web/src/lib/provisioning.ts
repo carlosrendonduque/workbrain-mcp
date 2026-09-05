@@ -134,6 +134,8 @@ export async function createNeonProject(args: {
 }
 
 export interface RegistryRows {
+  /** clients.user_id references it, so the copy needs it to satisfy the FK. */
+  user: typeof schema.users.$inferSelect;
   client: typeof schema.clients.$inferSelect;
   projects: (typeof schema.projects.$inferSelect)[];
 }
@@ -148,12 +150,20 @@ export async function readRegistry(central: WorkbrainDb, clientId: string): Prom
   const client = clients[0];
   if (!client) throw new Error(`Client ${clientId} not found in the central database`);
 
+  const users = await central
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.id, client.userId))
+    .limit(1);
+  const user = users[0];
+  if (!user) throw new Error(`Owner ${client.userId} of client ${clientId} not found`);
+
   const projects = await central
     .select()
     .from(schema.projects)
     .where(eq(schema.projects.clientId, clientId));
 
-  return { client, projects };
+  return { user, client, projects };
 }
 
 /**
@@ -169,6 +179,9 @@ export async function replicateRegistry(
   target: WorkbrainDb,
   registry: RegistryRows,
 ): Promise<void> {
+  // Order matters — each row below is the target of the next one's foreign
+  // key: users <- clients <- projects <- (the corpus tables).
+  await target.insert(schema.users).values(registry.user).onConflictDoNothing();
   await target.insert(schema.clients).values(registry.client).onConflictDoNothing();
 
   // Canon domains are the consultant's own cross-project conventions, not
