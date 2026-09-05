@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // db.ts reads DATABASE_URL at module load, so it has to exist before the
 // dynamic import below. These are never connected to — neon-http builds the
@@ -87,5 +87,30 @@ describe("isDedicated", () => {
     expect(mod.isDedicated({ isolationMode: "dedicated", corpusDbUrlEnv: "WB_ACME_DB" })).toBe(
       true,
     );
+  });
+});
+
+describe("importing this module without a connection string", () => {
+  // The regression this guards: db.ts used to read DATABASE_URL and throw at
+  // import time. ES imports are evaluated before any statement in the
+  // importing module, so a script whose first line is dotenv.config() had
+  // already crashed by the time that line ran — but only when something in
+  // its import graph pulled `db` as a VALUE. `import type` is erased, so
+  // half the scripts worked and half did not, for a reason invisible at the
+  // call site. Found by running check:sessions against a real database;
+  // 164 unit tests never saw it.
+  it("imports fine, and only complains when the handle is used", async () => {
+    vi.resetModules();
+    const saved = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const fresh = await import("./db");
+      expect(fresh.db).toBeDefined();
+      // Touching it is what should fail.
+      expect(() => fresh.db.select()).toThrow(/DATABASE_URL/);
+    } finally {
+      if (saved !== undefined) process.env.DATABASE_URL = saved;
+      vi.resetModules();
+    }
   });
 });
