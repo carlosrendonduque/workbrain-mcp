@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "// engines": "Vercel reads this from the Root Directory package.json, not the repo root. The root asks for >=22 <23, which Vercel does not parse — it silently built on Node 24. An exact major here is the only form it honours.",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
