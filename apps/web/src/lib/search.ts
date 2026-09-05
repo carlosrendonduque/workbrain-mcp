@@ -33,6 +33,7 @@ export const SearchInputSchema = z.object({
 export type SearchInput = z.infer<typeof SearchInputSchema>;
 
 export interface SearchChunk {
+  chunkId: string;
   documentId: string;
   documentPath: string;
   documentTitle: string;
@@ -41,6 +42,8 @@ export interface SearchChunk {
   text: string;
   similarity: number;
   rerankScore?: number;
+  /** Which retriever surfaced it. Useful when a result looks surprising. */
+  via?: "vector" | "lexical" | "both";
 }
 
 export interface SearchResult {
@@ -129,6 +132,7 @@ export function buildChunkQuery(args: {
 
   return corpusDb
     .select({
+      chunkId: schema.chunks.id,
       documentId: schema.chunks.documentId,
       documentPath: schema.documents.path,
       documentTitle: schema.documents.title,
@@ -142,6 +146,100 @@ export function buildChunkQuery(args: {
     .where(and(...conditions))
     .orderBy(desc(similaritySql))
     .limit(limit);
+}
+
+/**
+ * Build the lexical retrieval query.
+ *
+ * Cosine similarity is good at "something like this" and useless at "this
+ * exact string". A ticket id carries almost no semantic signal, so searching
+ * `ACME-1042` used to return whatever was vaguely nearby. Postgres full-text
+ * search over a stored, indexed tsvector answers that half.
+ *
+ * Same shape and, critically, the same mandatory project filter as the vector
+ * query — a second retriever is a second chance to leak across clients, so
+ * the tests pin this one too.
+ */
+export function buildLexicalQuery(args: {
+  corpusDb: WorkbrainDb;
+  projectId: string;
+  query: string;
+  limit: number;
+  input: Pick<SearchInput, "types" | "externalId" | "dateRange">;
+}) {
+  const { corpusDb, projectId, query, limit, input } = args;
+
+  const tsQuery = sql`plainto_tsquery('english', ${query})`;
+  const rank = sql<number>`ts_rank(chunks.text_search, ${tsQuery})`;
+
+  const archivedFilter = or(
+    isNull(schema.documents.status),
+    ne(schema.documents.status, ARCHIVED_STATUS),
+  );
+  const conditions = [
+    // SAFETY: as in buildChunkQuery, the project filter is mandatory and
+    // never conditional.
+    eq(schema.chunks.projectId, projectId),
+    sql`chunks.text_search @@ ${tsQuery}`,
+  ];
+  if (archivedFilter) conditions.push(archivedFilter);
+  if (input.types && input.types.length > 0) {
+    conditions.push(inArray(schema.chunks.type, input.types));
+  }
+  if (input.externalId) {
+    conditions.push(eq(schema.documents.externalId, input.externalId));
+  }
+  if (input.dateRange?.from) {
+    conditions.push(gte(schema.documents.createdAt, new Date(input.dateRange.from)));
+  }
+  if (input.dateRange?.to) {
+    const endOfDay = new Date(`${input.dateRange.to}T23:59:59.999Z`);
+    conditions.push(lte(schema.documents.createdAt, endOfDay));
+  }
+
+  return corpusDb
+    .select({
+      chunkId: schema.chunks.id,
+      documentId: schema.chunks.documentId,
+      documentPath: schema.documents.path,
+      documentTitle: schema.documents.title,
+      externalId: schema.documents.externalId,
+      type: schema.chunks.type,
+      text: schema.chunks.text,
+      rank,
+    })
+    .from(schema.chunks)
+    .innerJoin(schema.documents, eq(schema.chunks.documentId, schema.documents.id))
+    .where(and(...conditions))
+    .orderBy(desc(rank))
+    .limit(limit);
+}
+
+/**
+ * Merge two ranked lists without pretending their scores are comparable.
+ *
+ * Cosine similarity and ts_rank live on different scales; adding or averaging
+ * them is the classic mistake. Reciprocal rank fusion uses only POSITION, so
+ * a chunk that both retrievers rank highly beats one that only a single
+ * retriever loved. Used when reranking is off — when it is on, the reranker
+ * does the ordering and this only decides which candidates it sees.
+ */
+export function reciprocalRankFusion<T>(
+  lists: T[][],
+  keyOf: (item: T) => string,
+  k = 60,
+): { item: T; score: number }[] {
+  const scores = new Map<string, { item: T; score: number }>();
+  for (const list of lists) {
+    list.forEach((item, index) => {
+      const key = keyOf(item);
+      const contribution = 1 / (k + index + 1);
+      const existing = scores.get(key);
+      if (existing) existing.score += contribution;
+      else scores.set(key, { item, score: contribution });
+    });
+  }
+  return [...scores.values()].sort((a, b) => b.score - a.score);
 }
 
 export async function search(
@@ -183,16 +281,30 @@ export async function search(
       throw new SearchError("embedding_failed", "Voyage returned no embedding for query", 500);
     }
 
-    const rows = await buildChunkQuery({
-      corpusDb,
-      projectId: project.projectId,
-      queryVec,
-      minSimilarity,
-      limit: cosineLimit,
-      input,
-    });
+    // Two retrievers, because they fail in opposite directions. Cosine finds
+    // "something like this" and misses an exact ticket id; full-text finds
+    // the exact string and misses a paraphrase. Running both and letting the
+    // reranker order the union costs one extra indexed query.
+    const [vectorRows, lexicalRows] = await Promise.all([
+      buildChunkQuery({
+        corpusDb,
+        projectId: project.projectId,
+        queryVec,
+        minSimilarity,
+        limit: cosineLimit,
+        input,
+      }),
+      buildLexicalQuery({
+        corpusDb,
+        projectId: project.projectId,
+        query: input.query,
+        limit: cosineLimit,
+        input,
+      }),
+    ]);
 
-    const candidates: SearchChunk[] = rows.map((r) => ({
+    const vectorChunks: SearchChunk[] = vectorRows.map((r) => ({
+      chunkId: r.chunkId,
       documentId: r.documentId,
       documentPath: r.documentPath,
       documentTitle: r.documentTitle,
@@ -200,7 +312,37 @@ export async function search(
       type: r.type,
       text: r.text,
       similarity: Number(r.similarity),
+      via: "vector" as const,
     }));
+
+    const lexicalChunks: SearchChunk[] = lexicalRows.map((r) => ({
+      chunkId: r.chunkId,
+      documentId: r.documentId,
+      documentPath: r.documentPath,
+      documentTitle: r.documentTitle,
+      externalId: r.externalId,
+      type: r.type,
+      text: r.text,
+      // No cosine score exists for a chunk the vector pass never returned.
+      // Reporting 0 is honest; inventing one would put it on a scale it was
+      // never measured against.
+      similarity: 0,
+      via: "lexical" as const,
+    }));
+
+    const lexicalIds = new Set(lexicalRows.map((l) => l.chunkId));
+    for (const c of vectorChunks) {
+      if (lexicalIds.has(c.chunkId)) c.via = "both";
+    }
+
+    // Fused by POSITION, never by score — cosine similarity and ts_rank are
+    // on different scales and adding them is the classic mistake. When
+    // reranking is on this only decides which candidates it sees.
+    // reciprocalRankFusion keys by chunk id, so the union is deduped here.
+    const candidates: SearchChunk[] = reciprocalRankFusion(
+      [vectorChunks, lexicalChunks],
+      (c) => c.chunkId,
+    ).map((f) => f.item);
 
     let chunks: SearchChunk[];
     if (useRerank && candidates.length > 1) {

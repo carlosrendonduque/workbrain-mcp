@@ -30,6 +30,21 @@ beforeAll(async () => {
   searchMod = await import("./search");
 });
 
+function lexicalSqlFor(
+  input: Parameters<SearchModule["buildLexicalQuery"]>[0]["input"],
+  projectId = PROJECT,
+) {
+  return searchMod
+    .buildLexicalQuery({
+      corpusDb: dbMod.db,
+      projectId,
+      query: "ACME-1042 rate limiting",
+      limit: 8,
+      input,
+    })
+    .toSQL();
+}
+
 function sqlFor(
   input: Parameters<SearchModule["buildChunkQuery"]>[0]["input"],
   projectId = PROJECT,
@@ -133,5 +148,102 @@ describe("buildChunkQuery — the rest of the query", () => {
   it("limits the result set", () => {
     const { params } = sqlFor({});
     expect(params).toContain(8);
+  });
+});
+
+// A second retriever is a second chance to leak across clients, so it gets
+// the same treatment as the first.
+describe("buildLexicalQuery — the project filter is not optional here either", () => {
+  for (const { name, input } of INPUTS) {
+    it(`filters by project_id with ${name}`, () => {
+      const { sql, params } = lexicalSqlFor(input);
+      expect(sql).toContain('"chunks"."project_id" =');
+      expect(params).toContain(PROJECT);
+    });
+  }
+
+  it("never mentions another project's id", () => {
+    for (const { input } of INPUTS) {
+      expect(lexicalSqlFor(input).params).not.toContain(OTHER_PROJECT);
+    }
+  });
+
+  it("uses the project id it was given", () => {
+    const { params } = lexicalSqlFor({}, OTHER_PROJECT);
+    expect(params).toContain(OTHER_PROJECT);
+    expect(params).not.toContain(PROJECT);
+  });
+
+  it("searches the indexed tsvector column rather than scanning text", () => {
+    // Matching on `text` directly would work and would also table-scan every
+    // chunk in the project.
+    expect(lexicalSqlFor({}).sql).toContain("text_search");
+  });
+
+  it("excludes archived documents, like the vector query", () => {
+    const { sql, params } = lexicalSqlFor({});
+    expect(sql).toContain('"documents"."status"');
+    expect(params).toContain("archived");
+  });
+
+  it("binds the query text as a parameter", () => {
+    const { sql, params } = lexicalSqlFor({});
+    expect(params).toContain("ACME-1042 rate limiting");
+    expect(sql).not.toContain("ACME-1042 rate limiting");
+  });
+});
+
+describe("reciprocalRankFusion", () => {
+  const id = (x: { id: string }) => x.id;
+
+  it("keeps a single list in its original order", () => {
+    const list = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    expect(searchMod.reciprocalRankFusion([list], id).map((f) => f.item.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("deduplicates across lists", () => {
+    const out = searchMod.reciprocalRankFusion(
+      [
+        [{ id: "a" }, { id: "b" }],
+        [{ id: "b" }, { id: "c" }],
+      ],
+      id,
+    );
+    expect(out.map((f) => f.item.id).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  // The whole point: agreement between two retrievers beats a single
+  // retriever's enthusiasm.
+  it("promotes an item both lists found over one only a single list found", () => {
+    const out = searchMod.reciprocalRankFusion(
+      [
+        [{ id: "only-vector" }, { id: "shared" }],
+        [{ id: "only-lexical" }, { id: "shared" }],
+      ],
+      id,
+    );
+    expect(out[0]?.item.id).toBe("shared");
+  });
+
+  it("ranks by position, not by any score the items carry", () => {
+    // Cosine similarity and ts_rank live on different scales. Fusing on
+    // score is the classic mistake; these items carry deliberately
+    // misleading ones.
+    const out = searchMod.reciprocalRankFusion(
+      [[{ id: "first", score: 0.01 }], [{ id: "second", score: 0.99 }]],
+      (x) => x.id,
+    );
+    expect(out[0]?.item.id).toBe("first");
+  });
+
+  it("handles an empty list on either side", () => {
+    expect(searchMod.reciprocalRankFusion([[], [{ id: "a" }]], id).map((f) => f.item.id)).toEqual([
+      "a",
+    ]);
+    expect(searchMod.reciprocalRankFusion([[], []], id)).toEqual([]);
   });
 });
