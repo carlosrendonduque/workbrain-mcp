@@ -205,3 +205,34 @@ de cambiar:
 - **`set_active_project` no audita.** Por diseño (es estado local del MCP server),
   pero en multi-user queremos saber qué tenant tiene qué activo. Decisión en
   Phase 6.
+
+---
+
+## Revocar una llave no cierra las sesiones que abrió
+
+Encontrado el 2026-09-05, verificando el primer despliegue.
+
+`middleware.ts` toma dos caminos. El de `/api/*` busca el hash de la llave en la
+base en cada petición, así que revocar corta el acceso al instante. El del
+navegador solo verifica la firma de la cookie (`verifySession`) — nunca vuelve a
+consultar la base. La cookie lleva `apiKeyId` adentro y no se usa para nada.
+
+Resultado: una llave revocada sigue dando acceso al navegador hasta 30 días,
+que es el TTL de la sesión.
+
+**Por qué importa más aquí que en otra aplicación.** Lo que se vende es que la
+salida es limpia y demostrable. Un certificado de destrucción y un botón de
+revocar que no revoca son la misma promesa contradiciéndose. Y el caso no es
+teórico: un consultor que deja el equipo es exactamente cuando se revoca.
+
+**El arreglo tiene un costo real.** Validar `apiKeyId` contra la base en cada
+carga de página agrega una consulta al camino crítico de todo el webapp. Las
+opciones, en orden de lo que costaría:
+
+- Consultar siempre. Correcto y simple; paga latencia en cada navegación.
+- Bajar el TTL de 30 días a horas. No arregla nada, solo acorta la ventana.
+- Lista de revocados en la cookie o en caché de borde, consultada en cada
+  request pero sin ir a Postgres.
+
+No lo decidimos todavía porque el número que falta es cuánto cuesta esa consulta
+contra la base central desde el borde. Medir antes de elegir.
