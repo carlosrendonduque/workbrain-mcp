@@ -93,7 +93,7 @@ Antes de invitar a nadie: que esto despliegue limpio y no se pierdan datos.
 |---|---|---|---|
 | **5.1** | **Vercel project + env vars + dominio `workbrain.app`** | ✅ | Apex + www en SSL via Let's Encrypt, GitHub auto-deploy en push. |
 | **5.6** | **MCP HTTP transport en `/api/mcp`** | ✅ | Streamable HTTP per spec — un solo `claude mcp add --transport http` para conectar cualquier IDE sin clone/build local. 5 tools stateless: ingest_paste, search, record_decision, link_documents, compose_context. |
-| 5.2 | Neon producción (branch separado del dev) | ⬜ | + connection pooling tuning. Hoy dev y prod comparten la misma branch. |
+| 5.2 | ~~Neon producción (branch separado del dev)~~ → **Ambiente propio de `workbrain-mcp`** | 🟡 | **Reemplazada el 2026-09-05.** Ya no se trata de separar branches dentro del mismo Neon: `workbrain` (el repo viejo, vivo en workbrain.app) queda **congelado como producción** y no se toca más. `workbrain-mcp` levanta **su propio proyecto de Neon, su propio sitio y sus propios secretos** — salt y session secret distintos, así que las API keys de producción no valen acá. Producción va a quedar desactualizada a propósito. Cuando este repo esté maduro se reconcilian: migración de datos + CI/CD en serio. Efecto secundario bueno: como en el ambiente nuevo no hay nada valioso, los scripts destructivos (`db:isolate`, `db:migrate`) son seguros de correr sin supervisión. |
 | 5.3 | Corpus backup strategy | ⬜ | Auto-push hook · off-site mirror · restore drill |
 | 5.4 | E2E test suite | ⬜ | Playwright sobre el webapp + harness de curl para MCP |
 | 5.5 | Observabilidad básica | ⬜ | Logs aggregation · error tracking (Sentry?) · métricas básicas |
