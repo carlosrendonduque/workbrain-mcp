@@ -160,6 +160,7 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
                     <li key={r.id} className="px-5 py-2.5 text-sm">
                       <div className="flex items-center gap-3">
                         <span
+                          role="img"
                           className={`h-2 w-2 rounded-full ${dot.cls}`}
                           aria-label={dot.label}
                         />

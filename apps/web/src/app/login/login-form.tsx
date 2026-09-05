@@ -31,6 +31,7 @@ export function LoginForm({ next }: { next: string }) {
           type="password"
           name="apiKey"
           autoComplete="off"
+          // biome-ignore lint/a11y/noAutofocus: a login form has one job and one first field; removing this adds a click for no real gain
           autoFocus
           required
           placeholder="wbk_..."
