@@ -354,3 +354,36 @@ export const draftDocuments = pgTable(
     index("draft_documents_created_at_idx").on(t.createdAt),
   ],
 );
+
+// -----------------------------
+// Destruction certificates
+// -----------------------------
+// Issued when an engagement closes and a client's corpus is destroyed.
+//
+// Lives in the CENTRAL database on purpose: the record of a destruction has
+// to outlive the thing destroyed. Kept even when the client row itself is
+// later removed, which is why the slug and name are copied in rather than
+// referenced — a foreign key would take the certificate down with them.
+export const destructionCertificates = pgTable(
+  "destruction_certificates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id),
+    clientSlug: text("client_slug").notNull(),
+    clientName: text("client_name").notNull(),
+    projectSlugs: jsonb("project_slugs").notNull().default([]),
+    /** Rows removed, per table. */
+    removed: jsonb("removed").notNull().default({}),
+    /**
+     * SHA-256 over the sorted document ids that existed at the moment of
+     * destruction. Commits the certificate to a specific set without
+     * disclosing anything about it, and cannot be produced after the fact —
+     * the ids are gone.
+     */
+    documentsDigest: text("documents_digest").notNull(),
+    /** Where the corpus lived: "shared" or the dedicated database host. */
+    storage: text("storage").notNull(),
+    issuedAt: timestamp("issued_at").defaultNow().notNull(),
+  },
+  (t) => [index("destruction_certs_client_idx").on(t.clientSlug)],
+);

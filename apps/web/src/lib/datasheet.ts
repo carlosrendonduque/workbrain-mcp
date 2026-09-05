@@ -3,6 +3,7 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import { type WorkbrainDb, corpusDbFor, db } from "./db";
 import { describeRouting } from "./providers";
 import { CORPUS_TABLES, type CorpusCounts, countCorpus } from "./provisioning";
+import { listCertificates } from "./destruction";
 import { checkSessionIsolation } from "./session-isolation";
 
 /**
@@ -116,6 +117,11 @@ export async function buildDatasheet(userId: string, clientSlug: string): Promis
     c.clients.some((x) => x.clientId === client.id),
   );
 
+  // A corpus destroyed under an earlier engagement belongs on this page.
+  // Leaving it out would let a sheet imply the relationship only ever ran
+  // once, which is a quiet way of being wrong.
+  const certificates = await listCertificates(userId, client.slug);
+
   const routing = describeRouting({ ...client, clientSlug: client.slug });
   const generatedAt = new Date();
   const stamp = generatedAt.toISOString().replace("T", " ").slice(0, 16);
@@ -219,6 +225,18 @@ ${
     : ""
 }
 
+${
+  certificates.length > 0
+    ? `## Previously destroyed\n\n${certificates
+        .map(
+          (c) =>
+            `- ${c.issuedAt.toISOString().slice(0, 10)} — corpus destroyed, digest \`${c.documentsDigest.slice(0, 16)}…\``,
+        )
+        .join(
+          "\n",
+        )}\n\nA certificate was issued for each. They are held centrally and outlive the\ndata they refer to.\n`
+    : ""
+}
 ## How this ends
 
 When the engagement closes, this client's corpus is destroyed and a
