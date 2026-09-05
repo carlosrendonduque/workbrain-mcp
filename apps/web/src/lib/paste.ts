@@ -7,6 +7,7 @@ import { buildDocumentPath, writeDocument } from "./corpus";
 import type { WorkbrainDb } from "./db";
 import { chunkMarkdown } from "./chunking";
 import { assertConsistentEmbeddingModel, resolveEmbeddings, resolveLlm } from "./providers";
+import { assertNoSecrets } from "./secret-scan";
 import {
   type ClientScope,
   type ProjectContext,
@@ -36,6 +37,12 @@ export const IngestPasteInputSchema = z.object({
   type: z.enum(DOCUMENT_TYPES).optional(),
   title: z.string().min(1),
   content: z.string().min(1),
+  /**
+   * Store even if the content looks like it holds a credential. Off by
+   * default: a pasted secret is persisted, embedded and searchable forever,
+   * so the failure has to be loud.
+   */
+  allowSecrets: z.boolean().optional(),
   externalId: z.string().min(1).optional(),
   status: z.enum(["open", "in_progress", "resolved"]).optional(),
   tags: z.array(z.string()).optional(),
@@ -250,6 +257,11 @@ export async function ingestPaste(
 
   try {
     projectInfo = await resolveProject(userId, input.projectSlug, meta.clientScope);
+
+    // Before the classifier, before the embeddings, before any row: a
+    // credential that gets past here is stored, indexed and searchable for
+    // good, and may end up in a database handed to the client.
+    await assertNoSecrets(input.content, { allowSecrets: input.allowSecrets });
 
     // Auto-classify only when caller did not pass type. The classifier is a
     // fallback, not a validator — explicit type from the caller is always honored.
