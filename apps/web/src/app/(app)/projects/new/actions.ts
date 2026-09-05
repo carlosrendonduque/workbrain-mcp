@@ -41,8 +41,7 @@ export async function createProjectAction(
   if (!domainId) {
     return {
       status: "error",
-      message:
-        "Pick a canon domain. Create one at /account/canons if you don't have any yet.",
+      message: "Pick a canon domain. Create one at /account/canons if you don't have any yet.",
       code: "missing_domain",
     };
   }

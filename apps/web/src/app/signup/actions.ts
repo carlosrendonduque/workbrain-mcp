@@ -22,7 +22,11 @@ export async function signupAction(
   const email = readField(formData, "email");
 
   if (!rawToken || !email) {
-    return { status: "error", message: "Both invitation token and email are required.", code: "missing_fields" };
+    return {
+      status: "error",
+      message: "Both invitation token and email are required.",
+      code: "missing_fields",
+    };
   }
 
   try {

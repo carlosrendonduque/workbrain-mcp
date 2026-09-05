@@ -16,8 +16,7 @@ export function SidebarNav({ items }: { items: NavItem[] }) {
   return (
     <nav className="flex flex-col gap-0.5 px-2 py-3">
       {items.map((item) => {
-        const isActive =
-          item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href);
+        const isActive = item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href);
         if (item.disabled) {
           return (
             <span

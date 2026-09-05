@@ -90,7 +90,9 @@ export function CanonForm({
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] text-zinc-500">
           Saving updates the database. The disk copy at{" "}
-          <code className="font-mono text-zinc-400">corpus/&lt;client&gt;/&lt;project&gt;/_meta/*.md</code>{" "}
+          <code className="font-mono text-zinc-400">
+            corpus/&lt;client&gt;/&lt;project&gt;/_meta/*.md
+          </code>{" "}
           is not touched — keep one as the source of truth or run{" "}
           <code className="font-mono text-zinc-400">pnpm db:meta:sync</code> to overwrite from disk.
         </p>

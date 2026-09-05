@@ -37,9 +37,8 @@ export default async function IngestPage({ params }: PageProps) {
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">Ingest new document</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Paste a ticket, email, decision, note or transcript. The classifier infers type
-          and external_id when omitted. Auto-links any external IDs that already exist in
-          this project.
+          Paste a ticket, email, decision, note or transcript. The classifier infers type and
+          external_id when omitted. Auto-links any external IDs that already exist in this project.
         </p>
       </header>
 

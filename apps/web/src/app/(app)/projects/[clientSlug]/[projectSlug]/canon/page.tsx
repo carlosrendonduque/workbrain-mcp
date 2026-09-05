@@ -40,9 +40,9 @@ export default async function CanonEditorPage({ params }: PageProps) {
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">Canon</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          The conventions, guidelines and architecture that frame every prompt for this
-          project. Injected into <code className="font-mono">compose_context</code> as the
-          rules the agent should never override.
+          The conventions, guidelines and architecture that frame every prompt for this project.
+          Injected into <code className="font-mono">compose_context</code> as the rules the agent
+          should never override.
         </p>
       </header>
 

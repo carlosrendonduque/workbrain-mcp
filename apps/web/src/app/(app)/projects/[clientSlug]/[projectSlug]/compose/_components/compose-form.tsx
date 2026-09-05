@@ -97,8 +97,8 @@ export function ComposeForm({
               ))}
             </select>
             <p className="mt-1 text-[11px] text-zinc-500">
-              Only documents with an external_id can be used as focus. To use a doc
-              without one, switch to "From free text" and paste a snippet.
+              Only documents with an external_id can be used as focus. To use a doc without one,
+              switch to "From free text" and paste a snippet.
             </p>
           </div>
         ) : (

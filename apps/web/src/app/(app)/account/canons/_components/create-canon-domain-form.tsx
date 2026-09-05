@@ -29,9 +29,7 @@ export function CreateCanonDomainForm() {
     >
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-[10px] uppercase tracking-wide text-zinc-500">
-            Slug
-          </label>
+          <label className="text-[10px] uppercase tracking-wide text-zinc-500">Slug</label>
           <input
             name="slug"
             placeholder="salesforce"
@@ -41,9 +39,7 @@ export function CreateCanonDomainForm() {
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase tracking-wide text-zinc-500">
-            Name
-          </label>
+          <label className="text-[10px] uppercase tracking-wide text-zinc-500">Name</label>
           <input
             name="name"
             placeholder="Salesforce consulting"

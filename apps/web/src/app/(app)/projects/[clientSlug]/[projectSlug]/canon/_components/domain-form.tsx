@@ -4,10 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { CanonDomainSummary } from "@/lib/canon-domains";
-import {
-  type DomainAssignState,
-  assignProjectDomainAction,
-} from "../actions";
+import { type DomainAssignState, assignProjectDomainAction } from "../actions";
 
 const initialState: DomainAssignState = { status: "idle" };
 
@@ -45,9 +42,7 @@ export function ProjectDomainForm({
   return (
     <div
       className={`rounded-xl border p-4 ${
-        hasDomain
-          ? "border-zinc-800 bg-zinc-950/40"
-          : "border-amber-500/30 bg-amber-500/5"
+        hasDomain ? "border-zinc-800 bg-zinc-950/40" : "border-amber-500/30 bg-amber-500/5"
       }`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -69,30 +64,24 @@ export function ProjectDomainForm({
 
       {!hasDomain ? (
         <p className="mb-3 text-xs text-amber-200/80">
-          This project has no canon domain. The agent only sees project-level canon
-          and won't inherit cross-project conventions. Pick a domain below or{" "}
-          <Link
-            href="/account/canons"
-            className="underline-offset-2 hover:underline"
-          >
+          This project has no canon domain. The agent only sees project-level canon and won't
+          inherit cross-project conventions. Pick a domain below or{" "}
+          <Link href="/account/canons" className="underline-offset-2 hover:underline">
             create a new one
           </Link>
           .
         </p>
       ) : (
         <p className="mb-3 text-[11px] text-zinc-500">
-          Currently inheriting from <strong>{currentDomainName}</strong>. Change to a
-          different domain if this project belongs to another practice area.
+          Currently inheriting from <strong>{currentDomainName}</strong>. Change to a different
+          domain if this project belongs to another practice area.
         </p>
       )}
 
       {domains.length === 0 ? (
         <p className="text-xs text-zinc-400">
           You don't have any canon domains yet.{" "}
-          <Link
-            href="/account/canons"
-            className="text-indigo-300 hover:text-indigo-200"
-          >
+          <Link href="/account/canons" className="text-indigo-300 hover:text-indigo-200">
             Create one
           </Link>{" "}
           first.

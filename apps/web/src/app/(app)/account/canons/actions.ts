@@ -2,11 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import {
-  CanonDomainError,
-  createCanonDomain,
-  saveCanonDomainContent,
-} from "@/lib/canon-domains";
+import { CanonDomainError, createCanonDomain, saveCanonDomainContent } from "@/lib/canon-domains";
 import { requireSession } from "@/lib/webapp-auth";
 
 export type CanonDomainState =

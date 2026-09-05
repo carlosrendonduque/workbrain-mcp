@@ -13,9 +13,9 @@ export default async function AccountInviteTokensPage() {
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">Invite tokens</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Signup is invite-only while WorkBrain is in MVP. Issue a token to anyone you
-          want onboarded — they redeem it at <code className="font-mono">/signup</code>{" "}
-          to create their own isolated account.
+          Signup is invite-only while WorkBrain is in MVP. Issue a token to anyone you want
+          onboarded — they redeem it at <code className="font-mono">/signup</code> to create their
+          own isolated account.
         </p>
       </header>
 

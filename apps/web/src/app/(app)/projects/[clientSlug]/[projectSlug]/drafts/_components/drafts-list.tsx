@@ -4,11 +4,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { DraftRow } from "@/lib/drafts";
-import {
-  type DraftActionState,
-  approveAction,
-  rejectAction,
-} from "../actions";
+import { type DraftActionState, approveAction, rejectAction } from "../actions";
 
 const TIMESTAMP = new Intl.DateTimeFormat("en-AU", {
   dateStyle: "medium",
@@ -93,9 +89,7 @@ function DraftCard({
           {draft.proposedType}
         </span>
         {draft.proposedExternalId ? (
-          <span className="font-mono text-xs text-indigo-300">
-            {draft.proposedExternalId}
-          </span>
+          <span className="font-mono text-xs text-indigo-300">{draft.proposedExternalId}</span>
         ) : null}
         <span className="font-medium text-zinc-100">{draft.proposedTitle}</span>
         <span className="ml-auto text-[11px] text-zinc-500">

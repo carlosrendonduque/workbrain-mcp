@@ -29,10 +29,9 @@ export default async function CanonDomainEditPage({ params }: PageProps) {
       <header className="mb-6 max-w-3xl">
         <h1 className="text-2xl font-semibold text-zinc-100">{domain.name}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Cross-project canon for the <code className="font-mono">{domain.slug}</code>{" "}
-          domain. Applied as the default for every project assigned to this domain.
-          Project-level canon (set at{" "}
-          <code className="font-mono">/projects/&lt;client&gt;/&lt;project&gt;/canon</code>)
+          Cross-project canon for the <code className="font-mono">{domain.slug}</code> domain.
+          Applied as the default for every project assigned to this domain. Project-level canon (set
+          at <code className="font-mono">/projects/&lt;client&gt;/&lt;project&gt;/canon</code>)
           overrides where it exists.
         </p>
       </header>

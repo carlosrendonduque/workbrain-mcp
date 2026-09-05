@@ -111,11 +111,7 @@ export async function revokeSignupToken(creatorUserId: string, tokenId: string):
     )
     .returning({ id: schema.signupTokens.id });
   if (result.length === 0) {
-    throw new SignupTokenError(
-      "not_found",
-      "Token not found or not owned by user.",
-      404,
-    );
+    throw new SignupTokenError("not_found", "Token not found or not owned by user.", 404);
   }
 }
 
@@ -167,11 +163,7 @@ export async function claimSignupToken(args: {
     );
   }
   if (token.expiresAt && new Date(token.expiresAt).getTime() < Date.now()) {
-    throw new SignupTokenError(
-      "token_expired",
-      "This invitation token has expired.",
-      403,
-    );
+    throw new SignupTokenError("token_expired", "This invitation token has expired.", 403);
   }
 
   const existingUser = await db
@@ -180,11 +172,7 @@ export async function claimSignupToken(args: {
     .where(eq(schema.users.email, email))
     .limit(1);
   if (existingUser[0]) {
-    throw new SignupTokenError(
-      "email_taken",
-      "An account with this email already exists.",
-      409,
-    );
+    throw new SignupTokenError("email_taken", "An account with this email already exists.", 409);
   }
 
   const insertedUser = await db

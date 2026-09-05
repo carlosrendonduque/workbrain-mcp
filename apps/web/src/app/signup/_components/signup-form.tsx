@@ -68,8 +68,8 @@ export function SignupForm({ initialToken }: { initialToken?: string }) {
         <div>
           <h2 className="text-lg font-semibold">Account ready ✓</h2>
           <p className="mt-1 text-xs text-emerald-200/80">
-            Welcome <span className="font-mono">{state.email}</span>. Below is your API
-            key — copy it now, it won't be shown again.
+            Welcome <span className="font-mono">{state.email}</span>. Below is your API key — copy
+            it now, it won't be shown again.
           </p>
         </div>
 
@@ -113,16 +113,10 @@ export function SignupForm({ initialToken }: { initialToken?: string }) {
         </div>
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          <Link
-            href="/login"
-            className="text-emerald-200 underline-offset-2 hover:underline"
-          >
+          <Link href="/login" className="text-emerald-200 underline-offset-2 hover:underline">
             Sign in to the dashboard →
           </Link>
-          <Link
-            href="/setup"
-            className="text-emerald-200 underline-offset-2 hover:underline"
-          >
+          <Link href="/setup" className="text-emerald-200 underline-offset-2 hover:underline">
             Full setup guide →
           </Link>
         </div>

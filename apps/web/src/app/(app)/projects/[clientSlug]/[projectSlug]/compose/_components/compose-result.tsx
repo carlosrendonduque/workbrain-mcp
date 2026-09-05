@@ -2,7 +2,10 @@ import Link from "next/link";
 import type { ComposeContextResult } from "@/lib/compose";
 
 const NUMBER = new Intl.NumberFormat("en-US");
-const SCORE = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3, minimumFractionDigits: 3 });
+const SCORE = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 3,
+  minimumFractionDigits: 3,
+});
 
 function MetaPill({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -71,14 +74,8 @@ export function ComposeResult({
           Bundle ready
         </span>
         <MetaPill label="focus" value={result.metadata.focusReason} />
-        <MetaPill
-          label="rag chunks"
-          value={NUMBER.format(result.metadata.chunksRetrieved)}
-        />
-        <MetaPill
-          label="links"
-          value={NUMBER.format(result.metadata.linksFollowed)}
-        />
+        <MetaPill label="rag chunks" value={NUMBER.format(result.metadata.chunksRetrieved)} />
+        <MetaPill label="links" value={NUMBER.format(result.metadata.linksFollowed)} />
         <MetaPill
           label="rerank"
           value={result.metadata.rerankUsed ? "voyage rerank-2" : "off"}
@@ -137,9 +134,7 @@ export function ComposeResult({
 
       {/* Canon */}
       <section>
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Canon
-        </h2>
+        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Canon</h2>
         <div className="space-y-2">
           <CanonCard label="conventions" body={result.canon.conventions} />
           <CanonCard label="guidelines" body={result.canon.guidelines} />
@@ -184,9 +179,7 @@ export function ComposeResult({
                           </Link>
                         </div>
                         {d.note ? (
-                          <p className="mt-1 pl-2 text-[11px] italic text-zinc-500">
-                            "{d.note}"
-                          </p>
+                          <p className="mt-1 pl-2 text-[11px] italic text-zinc-500">"{d.note}"</p>
                         ) : null}
                       </li>
                     );
@@ -235,13 +228,9 @@ export function ComposeResult({
                     </Link>
                     <span className="ml-auto flex items-center gap-3 text-[11px] tabular-nums text-zinc-500">
                       {chunk.rerankScore !== undefined ? (
-                        <span title="rerank score">
-                          rerank {SCORE.format(chunk.rerankScore)}
-                        </span>
+                        <span title="rerank score">rerank {SCORE.format(chunk.rerankScore)}</span>
                       ) : null}
-                      <span title="cosine similarity">
-                        sim {SCORE.format(chunk.similarity)}
-                      </span>
+                      <span title="cosine similarity">sim {SCORE.format(chunk.similarity)}</span>
                     </span>
                   </div>
                   <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-xs text-zinc-300">

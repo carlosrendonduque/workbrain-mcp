@@ -105,12 +105,7 @@ export async function getCanonDomainBySlug(
       updatedAt: schema.canonDomains.updatedAt,
     })
     .from(schema.canonDomains)
-    .where(
-      and(
-        eq(schema.canonDomains.userId, userId),
-        eq(schema.canonDomains.slug, slug),
-      ),
-    )
+    .where(and(eq(schema.canonDomains.userId, userId), eq(schema.canonDomains.slug, slug)))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -130,12 +125,7 @@ export async function getCanonDomainById(
       updatedAt: schema.canonDomains.updatedAt,
     })
     .from(schema.canonDomains)
-    .where(
-      and(
-        eq(schema.canonDomains.userId, userId),
-        eq(schema.canonDomains.id, domainId),
-      ),
-    )
+    .where(and(eq(schema.canonDomains.userId, userId), eq(schema.canonDomains.id, domainId)))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -158,12 +148,7 @@ export async function createCanonDomain(
   const existing = await db
     .select({ id: schema.canonDomains.id })
     .from(schema.canonDomains)
-    .where(
-      and(
-        eq(schema.canonDomains.userId, userId),
-        eq(schema.canonDomains.slug, input.slug),
-      ),
-    )
+    .where(and(eq(schema.canonDomains.userId, userId), eq(schema.canonDomains.slug, input.slug)))
     .limit(1);
   if (existing[0]) {
     throw new CanonDomainError(
@@ -212,20 +197,11 @@ export async function saveCanonDomainContent(
       architecture: input.architecture,
       updatedAt: sql`now()`,
     })
-    .where(
-      and(
-        eq(schema.canonDomains.userId, userId),
-        eq(schema.canonDomains.slug, slug),
-      ),
-    )
+    .where(and(eq(schema.canonDomains.userId, userId), eq(schema.canonDomains.slug, slug)))
     .returning({ id: schema.canonDomains.id });
 
   if (result.length === 0) {
-    throw new CanonDomainError(
-      "not_found",
-      `Canon domain "${slug}" not found for this user.`,
-      404,
-    );
+    throw new CanonDomainError("not_found", `Canon domain "${slug}" not found for this user.`, 404);
   }
 }
 

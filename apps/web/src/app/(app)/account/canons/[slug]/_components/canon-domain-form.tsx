@@ -85,9 +85,9 @@ export function CanonDomainForm({
 
       <div className="flex items-center justify-between gap-3">
         <p className="max-w-2xl text-[11px] text-zinc-500">
-          Project-level canon overrides this for projects in this domain that have
-          their own conventions/guidelines/architecture. Use this for what is true
-          regardless of which project in the domain you're working on.
+          Project-level canon overrides this for projects in this domain that have their own
+          conventions/guidelines/architecture. Use this for what is true regardless of which project
+          in the domain you're working on.
         </p>
         <SubmitButton />
       </div>
