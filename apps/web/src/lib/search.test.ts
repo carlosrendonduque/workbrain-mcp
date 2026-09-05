@@ -247,3 +247,15 @@ describe("reciprocalRankFusion", () => {
     expect(searchMod.reciprocalRankFusion([[], []], id)).toEqual([]);
   });
 });
+
+describe("the ingest query that made duplicates possible", () => {
+  // buildChunkQuery and buildLexicalQuery both retrieve; the duplicate bug
+  // lived on the write side. What can be pinned here without a database is
+  // that retrieval carries the chunk id, which is what lets the two lists be
+  // deduplicated at all — without it the union double-counted every chunk
+  // both retrievers found.
+  it("returns the chunk id, so the two retrievers can be merged", () => {
+    expect(sqlFor({}).sql).toContain('"chunks"."id"');
+    expect(lexicalSqlFor({}).sql).toContain('"chunks"."id"');
+  });
+});

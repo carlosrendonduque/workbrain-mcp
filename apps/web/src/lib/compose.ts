@@ -1,5 +1,5 @@
 import { schema } from "@workbrain/shared";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { getCanonDomainById, type MergedCanon, mergeCanon } from "./canon-domains";
@@ -226,6 +226,11 @@ async function loadFocus(
     .where(
       and(eq(schema.documents.projectId, projectId), eq(schema.documents.externalId, externalId)),
     )
+    // A unique index now makes more than one row impossible, so this orders
+    // a set of at most one. It stays as the safety net for any database that
+    // predates that index: without it, `limit(1)` returns whichever row
+    // Postgres felt like, which could be the older version of the ticket.
+    .orderBy(desc(schema.documents.updatedAt))
     .limit(1);
 
   const row = rows[0];
