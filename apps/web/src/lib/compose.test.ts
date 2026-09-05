@@ -207,3 +207,57 @@ describe("withBudgetNotice", () => {
     expect(mod.withBudgetNotice("BASE", { ...clean, ragChunksDropped: 1 })).toContain("BASE");
   });
 });
+
+describe("governingPrompt", () => {
+  const canon = {
+    conventions: "Always name test classes <Class>Test.",
+    guidelines: "Prefer small PRs.",
+    architecture: "Payments go through the gateway.",
+  };
+
+  it("keeps the instructions", () => {
+    expect(mod.governingPrompt("INSTRUCTIONS", canon)).toContain("INSTRUCTIONS");
+  });
+
+  // The point of the whole function. instructionsForAgent names where the
+  // canon came from but never what it says, so an audit row built from it
+  // alone cannot answer "what rules was the agent following?".
+  it("includes the canon text, not just a reference to it", () => {
+    const out = mod.governingPrompt("INSTRUCTIONS", canon);
+    expect(out).toContain("Always name test classes <Class>Test.");
+    expect(out).toContain("Prefer small PRs.");
+    expect(out).toContain("Payments go through the gateway.");
+  });
+
+  it("labels each section so the parts stay distinguishable", () => {
+    const out = mod.governingPrompt("I", canon);
+    expect(out).toContain("## Conventions");
+    expect(out).toContain("## Guidelines");
+    expect(out).toContain("## Architecture");
+  });
+
+  it("omits sections that are not set", () => {
+    const out = mod.governingPrompt("I", {
+      conventions: "Only this.",
+      guidelines: null,
+      architecture: null,
+    });
+    expect(out).toContain("## Conventions");
+    expect(out).not.toContain("## Guidelines");
+  });
+
+  it("treats a whitespace-only canon as absent", () => {
+    const out = mod.governingPrompt("I", {
+      conventions: "   \n ",
+      guidelines: null,
+      architecture: null,
+    });
+    expect(out).not.toContain("## Conventions");
+  });
+
+  it("handles an entirely empty canon", () => {
+    expect(
+      mod.governingPrompt("I", { conventions: null, guidelines: null, architecture: null }),
+    ).toBe("I");
+  });
+});

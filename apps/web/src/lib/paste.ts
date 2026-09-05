@@ -2,7 +2,12 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@workbrain/shared";
 import { type InvocationMeta, recordInvocation } from "./audit";
-import { ClassifierError, type ClassifierUsage, classify } from "./classifier";
+import {
+  ClassifierError,
+  type ClassifierUsage,
+  SYSTEM_PROMPT as CLASSIFIER_SYSTEM_PROMPT,
+  classify,
+} from "./classifier";
 import { buildDocumentPath, writeDocument } from "./corpus";
 import type { WorkbrainDb } from "./db";
 import { chunkMarkdown } from "./chunking";
@@ -492,6 +497,9 @@ export async function ingestPaste(
       targetExternalId: finalExternalId ?? null,
       sessionId: meta.sessionId,
       status: "success",
+      // Only when the classifier ran — it is what decided the type and the
+      // external id, so it is what has to be reconstructible.
+      systemPrompt: classifierUsage ? CLASSIFIER_SYSTEM_PROMPT : "",
       userPrompt: `ingest_paste type=${finalType} title="${input.title}" classified=${classifierUsage !== undefined}`,
       retrievedChunks: [],
       latencyMs: Date.now() - start,

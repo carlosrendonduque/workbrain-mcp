@@ -67,7 +67,7 @@ export class ClassifierError extends Error {
   }
 }
 
-const SYSTEM_PROMPT = `You are a document classifier inside WorkBrain, a multi-client project memory layer for a software consultant.
+export const SYSTEM_PROMPT = `You are a document classifier inside WorkBrain, a multi-client project memory layer for a software consultant.
 
 Pasted documents arrive from many sources (Jira, ServiceNow, Confluence, Teams, Outlook, meeting transcripts, ad-hoc notes). Your job is to:
 

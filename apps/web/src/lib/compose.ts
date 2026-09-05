@@ -161,6 +161,36 @@ const FOCUS_QUERY_CHAR_LIMIT = 1500;
 const DEFAULT_MAX_TOKENS = 40_000;
 
 /**
+ * Everything normative the agent was handed, as one blob for the audit row.
+ *
+ * Design principle 5 asks for the full system prompt to be persisted, and
+ * `instructionsForAgent` alone does not satisfy it: it names where the canon
+ * came from — project or domain — but never what it says. The conventions
+ * ARE the behaviour, so an audit row without them cannot answer the question
+ * it exists for.
+ *
+ * The canon is also the part that changes. Edit a convention and the old
+ * wording is gone; without a copy here, invocations from before the edit
+ * become unexplainable. Storing it per invocation is redundant on any day
+ * nothing changed, and it is the only thing that makes the days something
+ * did change legible.
+ */
+export function governingPrompt(
+  instructions: string,
+  canon: { conventions: string | null; guidelines: string | null; architecture: string | null },
+): string {
+  const section = (label: string, body: string | null): string =>
+    body && body.trim().length > 0 ? `\n\n## ${label} (in force at this call)\n\n${body}` : "";
+
+  return [
+    instructions,
+    section("Conventions", canon.conventions),
+    section("Guidelines", canon.guidelines),
+    section("Architecture", canon.architecture),
+  ].join("");
+}
+
+/**
  * Tell the agent, in the instructions it actually reads, that its view is
  * partial.
  *
@@ -521,6 +551,7 @@ export async function getCanon(
     sessionId: meta.sessionId,
     status: "success",
     userPrompt: `projectSlug=${input.projectSlug}`,
+    systemPrompt: governingPrompt(instructionsForAgent, mergedCanon),
     retrievedChunks: {},
     latencyMs: Date.now() - start,
   });
@@ -666,6 +697,10 @@ export async function composeContext(
       targetExternalId: input.focusExternalId ?? null,
       status: "success",
       userPrompt: focusReason,
+      // What actually governed the agent on this call: the instructions plus
+      // the canon text that was in force. The canon can be edited afterwards;
+      // this is the only copy tied to the moment.
+      systemPrompt: governingPrompt(instructionsForAgent, mergedCanon),
       retrievedChunks: {
         focusDocumentId: focus?.documentId ?? null,
         ragDocumentIds: Array.from(new Set(ragChunks.map((c) => c.documentId))),
