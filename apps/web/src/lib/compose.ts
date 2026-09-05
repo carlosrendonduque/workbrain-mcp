@@ -4,6 +4,7 @@ import { z } from "zod";
 import { type InvocationMeta, recordInvocation } from "./audit";
 import { getCanonDomainById, type MergedCanon, mergeCanon } from "./canon-domains";
 import type { WorkbrainDb } from "./db";
+import { approxTokens } from "./chunking";
 import { type SearchChunk, search } from "./search";
 import {
   type ClientScope,
@@ -19,6 +20,13 @@ export const ComposeContextInputSchema = z
     focusText: z.string().min(1).optional(),
     topK: z.number().int().min(1).max(50).optional(),
     minSimilarity: z.number().min(0).max(1).optional(),
+    /**
+     * Rough ceiling on the size of the returned bundle, in tokens.
+     * Everything here lands in the agent's context window, and until this
+     * existed a ticket with fifteen linked Confluence pages could fill it in
+     * one call — from the tool whose whole job is managing that window.
+     */
+    maxTokens: z.number().int().min(2000).max(200_000).optional(),
   })
   .refine((d) => Boolean(d.focusExternalId) || Boolean(d.focusText), {
     message: "Provide either focusExternalId or focusText",
@@ -44,6 +52,12 @@ export interface FocusDocument {
 
 export interface LinkedDocument {
   documentId: string;
+  /**
+   * False when the budget ran out before this document. Everything else
+   * about it is still here, so the agent knows it exists and can ask for it
+   * by external id.
+   */
+  contentIncluded: boolean;
   type: string;
   externalId: string | null;
   title: string;
@@ -83,6 +97,21 @@ export interface ComposeContextResult {
     chunksRetrieved: number;
     linksFollowed: number;
     rerankUsed: boolean;
+    /**
+     * What the budget cost. Reported rather than applied silently: an agent
+     * given a trimmed view without being told is worse off than one given a
+     * smaller view it knows about, because it will reason as though it has
+     * seen everything.
+     */
+    budget: {
+      limitTokens: number;
+      usedTokens: number;
+      linkedDocsOmitted: number;
+      ragChunksDropped: number;
+      focusTruncated: boolean;
+      /** True when the canon alone exceeded the limit. Never trimmed. */
+      overBudget: boolean;
+    };
   };
 }
 
@@ -126,6 +155,159 @@ function bucketName(type: string): string {
 }
 
 const FOCUS_QUERY_CHAR_LIMIT = 1500;
+
+// Big enough to be worth loading, small enough to leave the agent room to
+// work. Callers with a bigger window can raise it per call.
+const DEFAULT_MAX_TOKENS = 40_000;
+
+/**
+ * Tell the agent, in the instructions it actually reads, that its view is
+ * partial.
+ *
+ * The metadata carries the same numbers, but an agent is not obliged to read
+ * metadata and will not reason about what it did not notice. Saying it here
+ * is what turns a trimmed bundle from a silent handicap into a known one it
+ * can work around by asking for the rest.
+ */
+export function withBudgetNotice(
+  instructions: string,
+  budget: ComposeContextResult["metadata"]["budget"],
+): string {
+  const notes: string[] = [];
+  if (budget.focusTruncated) {
+    notes.push(
+      "- The focus document was TRUNCATED to fit. Ask for the rest before relying on it being complete.",
+    );
+  }
+  if (budget.linkedDocsOmitted > 0) {
+    notes.push(
+      `- ${budget.linkedDocsOmitted} linked document(s) are listed without their content. They exist; fetch one by its external id with compose_context if you need it.`,
+    );
+  }
+  if (budget.ragChunksDropped > 0) {
+    notes.push(
+      `- ${budget.ragChunksDropped} lower-ranked corpus chunk(s) were dropped. Narrow the query with search if you need more.`,
+    );
+  }
+  if (budget.overBudget) {
+    notes.push(
+      "- The canon alone exceeds the context budget. It was NOT trimmed — conventions are binding and a half-read rule is worse than none — but everything else had no room. Tell the user their canon needs shortening.",
+    );
+  }
+  if (notes.length === 0) return instructions;
+
+  return `${instructions}
+
+## This bundle is incomplete
+
+${notes.join("\n")}
+
+Do not treat what you were given as the whole picture.`;
+}
+
+/**
+ * Fit the bundle inside a token budget, and report exactly what that cost.
+ *
+ * Order matters and reflects what the agent cannot work without:
+ *
+ *   1. canon      binding rules. NEVER trimmed — a half-read convention is
+ *                 worse than none, because the agent will follow the half it
+ *                 got and believe it followed all of it.
+ *   2. focus      the ticket being worked. Truncated only as a last resort,
+ *                 and flagged when it happens.
+ *   3. linked     supporting. Dropped whole, keeping the reference, so the
+ *                 agent still knows the document exists and can ask for it.
+ *   4. rag        supporting. Trimmed from the least relevant end.
+ *
+ * Nothing is trimmed silently. An agent handed a partial view it does not
+ * know is partial will reason as though it saw everything.
+ */
+export function applyBudget(args: {
+  limitTokens: number;
+  canonTokens: number;
+  instructionsTokens: number;
+  focus: FocusDocument | null;
+  linked: LinkedDocument[];
+  ragChunks: SearchChunk[];
+}): {
+  focus: FocusDocument | null;
+  linked: LinkedDocument[];
+  ragChunks: SearchChunk[];
+  budget: ComposeContextResult["metadata"]["budget"];
+} {
+  const { limitTokens, canonTokens, instructionsTokens } = args;
+  const fixed = canonTokens + instructionsTokens;
+
+  let focus = args.focus;
+  let focusTruncated = false;
+  let remaining = limitTokens - fixed;
+
+  // The canon and the instructions alone can exceed the limit. Report it and
+  // carry on rather than cutting the rules the agent is bound by; the fix is
+  // a shorter canon, and the user needs to be told that.
+  const overBudget = remaining <= 0;
+
+  if (focus) {
+    const focusTokens = approxTokens(focus.content);
+    if (!overBudget && focusTokens > remaining) {
+      const keepChars = Math.max(0, remaining * 4);
+      focus = {
+        ...focus,
+        content: `${focus.content.slice(0, keepChars)}\n\n[truncated to fit the context budget]`,
+      };
+      focusTruncated = true;
+      remaining = 0;
+    } else {
+      remaining -= focusTokens;
+    }
+  }
+
+  const linked: LinkedDocument[] = [];
+  let linkedDocsOmitted = 0;
+  for (const doc of args.linked) {
+    const cost = approxTokens(doc.content);
+    if (remaining - cost >= 0) {
+      linked.push({ ...doc, contentIncluded: true });
+      remaining -= cost;
+    } else {
+      // Keep the reference, drop the body.
+      linked.push({ ...doc, content: "", contentIncluded: false });
+      linkedDocsOmitted += 1;
+    }
+  }
+
+  const ragChunks: SearchChunk[] = [];
+  let ragChunksDropped = 0;
+  for (const chunk of args.ragChunks) {
+    const cost = approxTokens(chunk.text);
+    if (remaining - cost >= 0) {
+      ragChunks.push(chunk);
+      remaining -= cost;
+    } else {
+      ragChunksDropped += 1;
+    }
+  }
+
+  const usedTokens =
+    fixed +
+    (focus ? approxTokens(focus.content) : 0) +
+    linked.reduce((n, d) => n + approxTokens(d.content), 0) +
+    ragChunks.reduce((n, c) => n + approxTokens(c.text), 0);
+
+  return {
+    focus,
+    linked,
+    ragChunks,
+    budget: {
+      limitTokens,
+      usedTokens,
+      linkedDocsOmitted,
+      ragChunksDropped,
+      focusTruncated,
+      overBudget,
+    },
+  };
+}
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -264,7 +446,8 @@ async function loadLinkedDocuments(
     .from(schema.documentLinks)
     .innerJoin(schema.documents, eq(schema.documentLinks.toDocumentId, schema.documents.id))
     .where(eq(schema.documentLinks.fromDocumentId, focusId));
-  return rows;
+  // applyBudget decides which of these keep their content.
+  return rows.map((r) => ({ ...r, contentIncluded: true }));
 }
 
 async function loadStakeholders(
@@ -416,8 +599,31 @@ export async function composeContext(
     if (focus) {
       linkedFlat = await loadLinkedDocuments(project.corpusDb, focus.documentId);
     }
+    const { mergedCanon, stakeholders, instructionsForAgent } = await loadCanonBundle(
+      userId,
+      project,
+      "compose",
+    );
+
+    // Everything below lands in the agent's context window, so it is fitted
+    // to a budget before being assembled — the canon first and untouched,
+    // then the focus, then supporting material.
+    const canonTokens =
+      approxTokens(mergedCanon.conventions ?? "") +
+      approxTokens(mergedCanon.guidelines ?? "") +
+      approxTokens(mergedCanon.architecture ?? "");
+
+    const fitted = applyBudget({
+      limitTokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
+      canonTokens,
+      instructionsTokens: approxTokens(instructionsForAgent),
+      focus,
+      linked: linkedFlat,
+      ragChunks,
+    });
+
     const linked: Record<string, LinkedDocument[]> = {};
-    for (const doc of linkedFlat) {
+    for (const doc of fitted.linked) {
       const bucket = bucketName(doc.type);
       const existing = linked[bucket];
       if (existing) {
@@ -426,12 +632,6 @@ export async function composeContext(
         linked[bucket] = [doc];
       }
     }
-
-    const { mergedCanon, stakeholders, instructionsForAgent } = await loadCanonBundle(
-      userId,
-      project,
-      "compose",
-    );
 
     const result: ComposeContextResult = {
       project: { slug: project.projectSlug, name: project.projectName },
@@ -443,16 +643,17 @@ export async function composeContext(
         source: mergedCanon.source,
         domain: mergedCanon.domain,
       },
-      focus,
+      focus: fitted.focus,
       linked,
-      ragChunks,
+      ragChunks: fitted.ragChunks,
       stakeholders,
-      instructionsForAgent,
+      instructionsForAgent: withBudgetNotice(instructionsForAgent, fitted.budget),
       metadata: {
         focusReason,
-        chunksRetrieved: ragChunks.length,
+        chunksRetrieved: fitted.ragChunks.length,
         linksFollowed: linkedFlat.length,
         rerankUsed: searchResult.reranked,
+        budget: fitted.budget,
       },
     };
 
