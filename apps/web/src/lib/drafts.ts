@@ -12,6 +12,7 @@ import {
   resolveProjectContext,
 } from "./tenancy";
 import { type IngestPasteResult, ingestPaste } from "./paste";
+import { assertNoSecrets } from "./secret-scan";
 
 const DOCUMENT_TYPES = [
   "ticket",
@@ -46,6 +47,8 @@ export const ProposeDocumentInputSchema = z.object({
   type: z.enum(DOCUMENT_TYPES),
   title: z.string().min(1),
   content: z.string().min(1),
+  /** See ingest — a draft is stored too, so it gets the same check. */
+  allowSecrets: z.boolean().optional(),
   externalId: z.string().min(1).optional(),
   frontmatter: z.record(z.string(), z.unknown()).optional(),
   proposalNote: z.string().min(1).optional(),
@@ -124,6 +127,10 @@ export async function proposeDocument(
 ): Promise<CreatedDraft> {
   const start = Date.now();
   const project = await resolveProject(userId, input.projectSlug, meta.clientScope);
+
+  // A draft is a stored row like any other. Waiting until approval to check
+  // would leave the credential sitting in the database in the meantime.
+  await assertNoSecrets(input.content, { allowSecrets: input.allowSecrets });
 
   const cleanedRelations = (input.relatedExternalIds ?? [])
     .map((s) => s.trim())
