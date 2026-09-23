@@ -95,10 +95,9 @@ export const signupTokens = pgTable(
 // -----------------------------
 // Tenancy
 // -----------------------------
-// Where a client's corpus lives. "shared" keeps it in the central database
-// alongside other shared clients (separation enforced inside); "dedicated"
-// puts it in a database of its own, so the answer to "is my data in the same
-// database as your other clients?" is no.
+// Where a tenant's corpus lives. "shared" keeps it in the central database
+// alongside other shared tenants (separation enforced inside); "dedicated"
+// puts it in a database of its own, so no other tenant's rows share it.
 export const ISOLATION_MODES = ["shared", "dedicated"] as const;
 export type IsolationMode = (typeof ISOLATION_MODES)[number];
 
