@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A step-through schematic of the two paths a request takes inside WorkBrain: saving a document, and assembling context for a ticket.">
+<meta name="color-scheme" content="light dark">
+<title>WorkBrain Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --bg: #eef1f4;
+    --surface: #ffffff;
+    --surface-sunk: #e4e9ee;
+    --ink: #171b21;
+    --muted: #5b6672;
+    --faint: #8794a1;
+    --line: #d3dae1;
+    --line-strong: #b8c3cd;
+    --signal: #0f766e;
+    --signal-soft: #d3ece8;
+    --guard: #a16207;
+    --guard-soft: #f4e7cd;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1418;
+      --surface: #171e24;
+      --surface-sunk: #121920;
+      --ink: #e6ebf0;
+      --muted: #97a4b1;
+      --faint: #6d7c8a;
+      --line: #27313b;
+      --line-strong: #3a4753;
+      --signal: #2dd4bf;
+      --signal-soft: #10302e;
+      --guard: #d9a441;
+      --guard-soft: #33270f;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1418;
+    --surface: #171e24;
+    --surface-sunk: #121920;
+    --ink: #e6ebf0;
+    --muted: #97a4b1;
+    --faint: #6d7c8a;
+    --line: #27313b;
+    --line-strong: #3a4753;
+    --signal: #2dd4bf;
+    --signal-soft: #10302e;
+    --guard: #d9a441;
+    --guard-soft: #33270f;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    width: min(100% - 2rem, 76rem);
+    margin-inline: auto;
+    padding-block: clamp(1.75rem, 4vw, 3rem) 4rem;
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 0.35rem;
+  }
+  h1 {
+    font-size: clamp(1.6rem, 3.4vw, 2.3rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .standfirst {
+    margin: 0;
+    max-width: 34rem;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  /* ---------- flow tabs ---------- */
+  .tabs {
+    display: flex;
+    gap: 0.4rem;
+    margin: 1.75rem 0 0;
+    padding: 0;
+    list-style: none;
+    flex-wrap: wrap;
+  }
+  .tab {
+    font: 500 0.9rem/1 var(--sans);
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.55rem 1.05rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .tab:hover { border-color: var(--line-strong); color: var(--ink); }
+  .tab[aria-selected="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg);
+  }
+  .tab .count {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    opacity: 0.7;
+  }
+
+  /* ---------- stage ---------- */
+  .stage-scroll {
+    margin-top: 1rem;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    background-image:
+      linear-gradient(var(--surface-sunk) 1px, transparent 1px),
+      linear-gradient(90deg, var(--surface-sunk) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: -1px -1px;
+  }
+  .stage { display: block; width: 100%; min-width: 760px; height: auto; }
+
+  .lane-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    fill: var(--faint);
+  }
+  .edge-base { fill: none; stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 4 5; opacity: 0.85; }
+  .edge-live { fill: none; stroke: var(--signal); stroke-width: 2.5; stroke-linecap: round; }
+  .edge-live.is-guard { stroke: var(--guard); }
+
+  .node rect {
+    fill: var(--surface);
+    stroke: var(--line-strong);
+    stroke-width: 1.5;
+    rx: 8;
+  }
+  .node.is-db rect { rx: 14; }
+  .node.is-lit rect { stroke: var(--signal); stroke-width: 2.5; }
+  .node.is-lit.is-guard rect { stroke: var(--guard); }
+  .node .n-name { font: 600 14px var(--sans); fill: var(--ink); }
+  .node .n-sub { font: 400 11px var(--mono); fill: var(--faint); }
+
+  .token circle { fill: var(--signal); }
+  .token.is-guard circle { fill: var(--guard); }
+  .token text { font: 500 11px var(--mono); fill: var(--bg); }
+
+  .edge-caption {
+    font: 500 12px var(--mono);
+    fill: var(--ink);
+    paint-order: stroke;
+    stroke: var(--surface);
+    stroke-width: 5px;
+    stroke-linejoin: round;
+  }
+
+  /* ---------- controls ---------- */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+  }
+  .btn {
+    font: 500 0.88rem/1 var(--sans);
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 7px;
+    padding: 0.6rem 0.95rem;
+    cursor: pointer;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--ink); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-play { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .counter {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- step rail ---------- */
+  .rail {
+    display: flex;
+    gap: 0.3rem;
+    margin: 1.1rem 0 0;
+    padding: 0 0 0.35rem;
+    list-style: none;
+    overflow-x: auto;
+  }
+  .rail button {
+    font: 500 0.78rem/1 var(--mono);
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    width: 2.1rem;
+    height: 2.1rem;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+    flex: none;
+  }
+  .rail button:hover { border-color: var(--line-strong); color: var(--ink); }
+  .rail button[aria-current="step"] {
+    background: var(--signal);
+    border-color: var(--signal);
+    color: var(--surface);
+  }
+  .rail button.is-done { color: var(--ink); border-color: var(--line-strong); }
+
+  /* ---------- note ---------- */
+  .note {
+    margin-top: 1.1rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 1rem 2rem;
+    align-items: start;
+  }
+  @media (max-width: 720px) { .note { grid-template-columns: 1fr; } }
+  .note h2 {
+    font-size: 1.12rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.4rem;
+  }
+  .note p { margin: 0; color: var(--muted); max-width: 62ch; }
+  .note .call {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--signal);
+    border-radius: 6px;
+    padding: 0.7rem 0.85rem;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--ink);
+  }
+  .note .call.is-guard { border-left-color: var(--guard); }
+  .tagline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--guard);
+    background: var(--guard-soft);
+    border-radius: 999px;
+    padding: 0.22rem 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* ---------- footer notes ---------- */
+  .after {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 1.5rem 2.5rem;
+  }
+  .after h3 {
+    font-size: 0.78rem;
+    font-family: var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 500;
+    margin: 0 0 0.45rem;
+  }
+  .after p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+  .after a { color: var(--ink); text-underline-offset: 0.2em; }
+
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; border-radius: 4px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 0.001ms !important; }
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">WorkBrain · playbook</p>
+      <h1>What happens when an agent asks</h1>
+    </div>
+    <p class="standfirst">
+      An agent never reaches the database. It calls an MCP tool, and the API decides
+      which database is allowed to answer. Step through either path below.
+    </p>
+  </header>
+
+  <ul class="tabs" role="tablist" aria-label="Flow">
+    <li role="presentation">
+      <button class="tab" role="tab" id="tab-ingest" aria-controls="panel" aria-selected="true" data-flow="ingest">
+        Saving something <span class="count">11 steps</span>
+      </button>
+    </li>
+    <li role="presentation">
+      <button class="tab" role="tab" id="tab-retrieve" aria-controls="panel" aria-selected="false" data-flow="retrieve">
+        Asking for context <span class="count">11 steps</span>
+      </button>
+    </li>
+  </ul>
+
+  <div id="panel" role="tabpanel" aria-labelledby="tab-ingest">
+    <div class="stage-scroll">
+      <svg class="stage" viewBox="0 0 1180 470" role="img" aria-labelledby="stage-title">
+        <title id="stage-title">Schematic of WorkBrain's actors and the path the current step takes</title>
+        <g id="laneLabels"></g>
+        <g id="baseEdges"></g>
+        <path id="liveEdge" class="edge-live" d="" />
+        <g id="nodes"></g>
+        <text id="edgeCaption" class="edge-caption" text-anchor="middle"></text>
+        <g id="token" class="token" opacity="0">
+          <circle r="9"></circle>
+        </g>
+      </svg>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="prev" type="button">← Back</button>
+      <button class="btn btn-play" id="play" type="button">Play</button>
+      <button class="btn" id="next" type="button">Next →</button>
+      <span class="counter" id="counter">Step 1 of 11</span>
+    </div>
+
+    <ol class="rail" id="rail"></ol>
+
+    <div class="note">
+      <div>
+        <span class="tagline" id="tagline" hidden></span>
+        <h2 id="noteTitle">—</h2>
+        <p id="noteBody">—</p>
+      </div>
+      <div class="call" id="noteCall">—</div>
+    </div>
+  </div>
+
+  <div class="after">
+    <div>
+      <h3>Why two databases</h3>
+      <p>
+        The central registry knows which projects exist and who may read them. The corpus
+        holds the documents. Postgres cannot join across databases, so ownership is proved
+        by scoping to the project ids the registry vouched for — never by a join.
+      </p>
+    </div>
+    <div>
+      <h3>The filter is not optional</h3>
+      <p>
+        Every corpus read goes through <code>corpusDbFor()</code> or
+        <code>resolveProjectContext()</code>. Reaching a corpus table through the central
+        handle is the one mistake the design cannot catch for you.
+      </p>
+    </div>
+    <div>
+      <h3>Read the code</h3>
+      <p>
+        <a href="https://github.com/carlosrendonduque/workbrain-mcp">github.com/carlosrendonduque/workbrain-mcp</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var NODES = {
+    you:      { x: 92,   y: 300, w: 132, h: 58, name: "You",            sub: "in the editor" },
+    agent:    { x: 300,  y: 300, w: 158, h: 58, name: "Agent",          sub: "Claude Code · Cursor" },
+    api:      { x: 545,  y: 300, w: 152, h: 58, name: "API",            sub: "Bearer wbk_*" },
+    claude:   { x: 800,  y: 92,  w: 150, h: 58, name: "Claude",         sub: "classify · draft" },
+    voyage:   { x: 800,  y: 206, w: 150, h: 58, name: "Voyage",         sub: "embed · rerank" },
+    registry: { x: 1030, y: 120, w: 172, h: 62, name: "Registry",       sub: "projects · keys", db: true },
+    corpus:   { x: 1030, y: 360, w: 172, h: 62, name: "Tenant corpus",  sub: "documents · chunks", db: true }
+  };
+
+  var LANES = [
+    { x: 92,   label: "Human" },
+    { x: 300,  label: "MCP" },
+    { x: 545,  label: "Vercel" },
+    { x: 800,  label: "Models" },
+    { x: 1030, label: "Neon" }
+  ];
+
+  var BASE_EDGES = [
+    ["you", "agent"], ["agent", "api"], ["api", "claude"], ["api", "voyage"],
+    ["api", "registry"], ["api", "corpus"]
+  ];
+
+  var FLOWS = {
+    ingest: {
+      label: "Saving something",
+      steps: [
+        { from: "you", to: "agent", tag: "paste",
+          title: "You hand the agent something worth keeping",
+          body: "A decision, a convention, a thread, a page — whatever will matter again next month and does not live in the repo. You do not open a form; you say it in the chat you were already in.",
+          call: "\"save this in project-x\"" },
+        { from: "agent", to: "api", tag: "ingest_paste",
+          title: "The agent calls one MCP tool",
+          body: "The project slug defaults to whatever project is active, so you rarely name it. The call carries an API key scoped to a single tenant — a key for one tenant cannot read another.",
+          call: "POST /api/ingest/paste\nAuthorization: Bearer wbk_…" },
+        { from: "api", to: "api", tag: "secret scan", guard: true,
+          title: "Secrets are scanned for before anything is stored",
+          body: "Pasted material is exactly where a token or a connection string arrives by accident. The scan runs before the text reaches a model or a row, because the cheapest place to stop a leak is before it is written down.",
+          call: "secretScan(content)" },
+        { from: "api", to: "claude", tag: "classify",
+          title: "Claude reads it and says what it is",
+          body: "Decision, convention, guideline or note — plus a title, tags, and any ids the text references. Getting this wrong is the difference between a rule an agent finds later and a note nobody sees again.",
+          call: "classify(content)" },
+        { from: "claude", to: "api", tag: "frontmatter",
+          title: "It comes back as frontmatter, not prose",
+          body: "Type, title, tags and related ids, structured. The cost of the call is recorded next to the result, so the price of ingestion is a number you can look at rather than a surprise on a bill.",
+          call: "{ type, title, tags, relatedTickets }" },
+        { from: "api", to: "api", tag: "chunk",
+          title: "The document is cut into retrievable pieces",
+          body: "Whole documents are the wrong unit for retrieval: too big to fit a budget, too coarse to rank. Chunks are what search returns and what a token budget is spent on.",
+          call: "chunk(document)" },
+        { from: "api", to: "voyage", tag: "embed",
+          title: "Each chunk becomes a vector",
+          body: "Voyage 3 Large, 1024 dimensions. This is what makes a question about \"the date picker bug\" find a chunk that never used those words.",
+          call: "embed(chunks[])" },
+        { from: "voyage", to: "api", tag: "vectors",
+          title: "Vectors come back",
+          body: "They are stored in pgvector with an HNSW index, which is what keeps search fast once a corpus stops being small.",
+          call: "1024-dim × chunkCount" },
+        { from: "api", to: "corpus", tag: "store", guard: true,
+          title: "It lands in this tenant's corpus, and only there",
+          body: "Which database that is was decided by the tenancy resolver, not by the caller. A tenant on shared storage and a tenant on a database of its own take the same code path; only the connection differs.",
+          call: "corpusDbFor(tenant)\n  .insert(documents, chunks)" },
+        { from: "api", to: "corpus", tag: "link",
+          title: "References become real links",
+          body: "If the text mentions another id, the two documents are linked. That is what lets a later question surface the cousin of a bug that was already solved.",
+          call: "autoLinkReferences(document)" },
+        { from: "api", to: "agent", tag: "receipt",
+          title: "The agent gets a receipt, not a summary",
+          body: "A document id and a chunk count. Every call also wrote a row to invocations, success or failure, so what the tool did is auditable after the fact.",
+          call: "{ documentId, chunkCount }" }
+      ]
+    },
+    retrieve: {
+      label: "Asking for context",
+      steps: [
+        { from: "agent", to: "api", tag: "get_canon",
+          title: "Every conversation opens by reading the rules",
+          body: "The MCP server advertises this contract during the handshake, so it reaches a new conversation on any machine without committing anything to the project repo.",
+          call: "get_canon()" },
+        { from: "api", to: "registry", tag: "resolve", guard: true,
+          title: "The registry says which project this is",
+          body: "Resolution order is explicit: a set_active_project call, then the environment variable, then a binding saved for this working directory. There is deliberately no \"last project used\" fallback — that is how one tenant's context ends up in another tenant's repo.",
+          call: "resolveProjectContext()" },
+        { from: "api", to: "corpus", tag: "canon",
+          title: "Conventions, rules and architecture come back",
+          body: "The canon is the part an agent should know before it writes a line: how this project does things, what was already decided, what not to touch.",
+          call: "SELECT … WHERE project_id = $1" },
+        { from: "api", to: "agent", tag: "canon only",
+          title: "No search, no model, no cost",
+          body: "This call deliberately does none of the expensive things. It is cheap enough to run at the top of every conversation, which is the only reason it actually gets run.",
+          call: "{ canon }" },
+        { from: "agent", to: "api", tag: "compose_context",
+          title: "Now a ticket is named",
+          body: "This is the flagship call: everything an agent needs about one piece of work, assembled in a single round trip instead of a dozen copy-pastes.",
+          call: "compose_context({ focusExternalId })" },
+        { from: "api", to: "corpus", tag: "focus",
+          title: "The focus document is pulled first",
+          body: "It is the one document guaranteed a place in the result. Everything else competes for what is left of the budget.",
+          call: "getDocument(externalId)" },
+        { from: "api", to: "voyage", tag: "embed query",
+          title: "The question becomes a vector too",
+          body: "The same model that embedded the chunks embeds the query, which is what makes the two comparable at all.",
+          call: "embed(query)" },
+        { from: "api", to: "corpus", tag: "hybrid search", guard: true,
+          title: "Vector and keyword search run together",
+          body: "Cosine similarity finds what is related; a stored tsvector finds the exact identifier a vector would blur. Both carry the same mandatory project filter — the tests fail if it is removed.",
+          call: "vector ∪ lexical\nWHERE project_id = $1" },
+        { from: "api", to: "voyage", tag: "rerank",
+          title: "A wider candidate set gets reranked",
+          body: "More candidates are pulled than will be returned, so the rerank model can promote a chunk that raw cosine ranked too low. The candidate set is capped, because rerank costs money per token.",
+          call: "rerank(query, candidates)" },
+        { from: "voyage", to: "api", tag: "ordered",
+          title: "The chunks come back in order of usefulness",
+          body: "Each one carries its score and how it was found — vector, lexical, or both — so a bad answer can be traced to a bad retrieval.",
+          call: "[{ chunk, score, via }]" },
+        { from: "api", to: "agent", tag: "budget",
+          title: "The agent receives canon, focus and related — within a budget",
+          body: "What the budget cost is reported, not applied silently. An agent that knows a document was truncated can ask for more; one that was quietly given less cannot.",
+          call: "{ canon, focus, related,\n  budget: { spent, truncated } }" }
+      ]
+    }
+  };
+
+  var svg = document.querySelector(".stage");
+  var elNodes = document.getElementById("nodes");
+  var elBase = document.getElementById("baseEdges");
+  var elLanes = document.getElementById("laneLabels");
+  var elLive = document.getElementById("liveEdge");
+  var elToken = document.getElementById("token");
+  var elCaption = document.getElementById("edgeCaption");
+  var elRail = document.getElementById("rail");
+  var elCounter = document.getElementById("counter");
+  var elTitle = document.getElementById("noteTitle");
+  var elBody = document.getElementById("noteBody");
+  var elCall = document.getElementById("noteCall");
+  var elTag = document.getElementById("tagline");
+  var btnPrev = document.getElementById("prev");
+  var btnNext = document.getElementById("next");
+  var btnPlay = document.getElementById("play");
+  var NS = "http://www.w3.org/2000/svg";
+
+  var flowKey = "ingest";
+  var index = 0;
+  var playing = false;
+  var timer = null;
+  var raf = null;
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  // Where a straight line from one node to another crosses the first node's box.
+  function anchor(a, b) {
+    var dx = b.x - a.x, dy = b.y - a.y;
+    if (dx === 0 && dy === 0) return { x: a.x, y: a.y };
+    var hw = a.w / 2 + 6, hh = a.h / 2 + 6;
+    var sx = dx === 0 ? Infinity : hw / Math.abs(dx);
+    var sy = dy === 0 ? Infinity : hh / Math.abs(dy);
+    var s = Math.min(sx, sy);
+    return { x: a.x + dx * s, y: a.y + dy * s };
+  }
+
+  function pathBetween(fromKey, toKey) {
+    var a = NODES[fromKey], b = NODES[toKey];
+    if (fromKey === toKey) {
+      var t = a.y - a.h / 2 - 6;
+      return "M " + (a.x - 34) + " " + t +
+             " C " + (a.x - 34) + " " + (t - 52) + ", " +
+                     (a.x + 34) + " " + (t - 52) + ", " +
+                     (a.x + 34) + " " + t;
+    }
+    var p = anchor(a, b), q = anchor(b, a);
+    return "M " + p.x + " " + p.y + " L " + q.x + " " + q.y;
+  }
+
+  function drawStatic() {
+    LANES.forEach(function (lane) {
+      var t = el("text", { x: lane.x, y: 30, class: "lane-label", "text-anchor": "middle" }, elLanes);
+      t.textContent = lane.label;
+    });
+    BASE_EDGES.forEach(function (pair) {
+      el("path", { class: "edge-base", d: pathBetween(pair[0], pair[1]) }, elBase);
+    });
+    Object.keys(NODES).forEach(function (key) {
+      var n = NODES[key];
+      var g = el("g", { class: "node" + (n.db ? " is-db" : ""), "data-node": key }, elNodes);
+      el("rect", { x: n.x - n.w / 2, y: n.y - n.h / 2, width: n.w, height: n.h }, g);
+      var name = el("text", { x: n.x, y: n.y - 2, class: "n-name", "text-anchor": "middle" }, g);
+      name.textContent = n.name;
+      var sub = el("text", { x: n.x, y: n.y + 16, class: "n-sub", "text-anchor": "middle" }, g);
+      sub.textContent = n.sub;
+    });
+  }
+
+  function buildRail() {
+    elRail.textContent = "";
+    FLOWS[flowKey].steps.forEach(function (step, i) {
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = String(i + 1);
+      b.setAttribute("aria-label", "Step " + (i + 1) + ": " + step.title);
+      b.addEventListener("click", function () { stop(); go(i); });
+      li.appendChild(b);
+      elRail.appendChild(li);
+    });
+  }
+
+  function animateToken(d, guard) {
+    if (raf) cancelAnimationFrame(raf);
+    elToken.classList.toggle("is-guard", !!guard);
+    var probe = el("path", { d: d }, svg);
+    var len = probe.getTotalLength();
+    var start = null;
+    var dur = reduce ? 0 : Math.min(1100, 340 + len * 1.6);
+
+    function frame(ts) {
+      if (start === null) start = ts;
+      var t = dur === 0 ? 1 : Math.min(1, (ts - start) / dur);
+      var eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      var pt = probe.getPointAtLength(eased * len);
+      elToken.setAttribute("transform", "translate(" + pt.x + "," + pt.y + ")");
+      elToken.setAttribute("opacity", "1");
+      if (t < 1) { raf = requestAnimationFrame(frame); }
+      else { probe.remove(); raf = null; }
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  function go(i) {
+    var steps = FLOWS[flowKey].steps;
+    index = Math.max(0, Math.min(steps.length - 1, i));
+    var step = steps[index];
+    var d = pathBetween(step.from, step.to);
+
+    elLive.setAttribute("d", d);
+    elLive.classList.toggle("is-guard", !!step.guard);
+
+    Array.prototype.forEach.call(elNodes.children, function (g) {
+      var key = g.getAttribute("data-node");
+      var lit = key === step.from || key === step.to;
+      g.classList.toggle("is-lit", lit);
+      g.classList.toggle("is-guard", lit && !!step.guard);
+    });
+
+    var a = NODES[step.from], b = NODES[step.to];
+    var mid = step.from === step.to
+      ? { x: a.x, y: a.y - a.h / 2 - 48 }
+      : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 12 };
+    elCaption.setAttribute("x", mid.x);
+    elCaption.setAttribute("y", mid.y);
+    elCaption.textContent = step.tag;
+
+    animateToken(d, step.guard);
+
+    elTitle.textContent = step.title;
+    elBody.textContent = step.body;
+    elCall.textContent = step.call;
+    elCall.classList.toggle("is-guard", !!step.guard);
+    if (step.guard) {
+      elTag.hidden = false;
+      elTag.textContent = "isolation boundary";
+    } else {
+      elTag.hidden = true;
+    }
+
+    elCounter.textContent = "Step " + (index + 1) + " of " + steps.length;
+    btnPrev.disabled = index === 0;
+    btnNext.disabled = index === steps.length - 1;
+
+    Array.prototype.forEach.call(elRail.querySelectorAll("button"), function (b, i2) {
+      if (i2 === index) b.setAttribute("aria-current", "step");
+      else b.removeAttribute("aria-current");
+      b.classList.toggle("is-done", i2 < index);
+    });
+  }
+
+  function stop() {
+    playing = false;
+    if (timer) { clearInterval(timer); timer = null; }
+    btnPlay.textContent = "Play";
+  }
+
+  function play() {
+    var steps = FLOWS[flowKey].steps;
+    if (index === steps.length - 1) go(0);
+    playing = true;
+    btnPlay.textContent = "Pause";
+    timer = setInterval(function () {
+      if (index >= steps.length - 1) { stop(); return; }
+      go(index + 1);
+    }, reduce ? 1600 : 2400);
+  }
+
+  function setFlow(key) {
+    stop();
+    flowKey = key;
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
+      t.setAttribute("aria-selected", String(t.dataset.flow === key));
+    });
+    document.getElementById("panel").setAttribute("aria-labelledby", "tab-" + key);
+    buildRail();
+    go(0);
+  }
+
+  btnPrev.addEventListener("click", function () { stop(); go(index - 1); });
+  btnNext.addEventListener("click", function () { stop(); go(index + 1); });
+  btnPlay.addEventListener("click", function () { playing ? stop() : play(); });
+  Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
+    t.addEventListener("click", function () { setFlow(t.dataset.flow); });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    if (e.key === "ArrowRight") { stop(); go(index + 1); }
+    if (e.key === "ArrowLeft") { stop(); go(index - 1); }
+  });
+
+  drawStatic();
+  buildRail();
+  go(0);
+})();
+</script>
+</body>
+</html>
