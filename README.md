@@ -9,6 +9,10 @@ Multi-tenant project memory layer for Cursor and Claude Code, consumed via MCP.
 An agent never talks to the database. It calls MCP tools; the API decides
 which database answers, and the project filter is not optional anywhere.
 
+> **[Step through it →](https://carlosrendonduque.github.io/workbrain-mcp/)**
+> The same two flows as an interactive schematic: the actors light up, the
+> payload travels, and each step shows the call it actually makes.
+
 ```mermaid
 flowchart LR
   subgraph ide["Your editor"]
