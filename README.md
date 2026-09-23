@@ -30,7 +30,6 @@ workbrain/
 │   ├── shared/                # Drizzle schema, frontmatter helpers (yaml)
 │   └── mcp-server/            # MCP stdio server, 4 tools, smoke test
 ├── drizzle/                   # generated migration SQL + meta
-├── docs/                      # design documents
 └── corpus/                    # local markdown corpus — separate git repo, gitignored here
 ```
 
