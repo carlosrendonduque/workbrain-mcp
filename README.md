@@ -1,9 +1,8 @@
 # WorkBrain
 
-Multi-client project memory layer for Cursor and Claude Code, consumed via MCP.
+Multi-tenant project memory layer for Cursor and Claude Code, consumed via MCP.
 
-> **Phase 1** — paste ingestion + semantic search, end-to-end, for two pilot projects.
-> See [`docs/04-workbrain-design-final.md`](docs/04-workbrain-design-final.md) for the executable Phase 1 spec, and [`docs/02-workbrain-implementation-brief.md`](docs/02-workbrain-implementation-brief.md) for the multi-phase roadmap.
+> **Phase 1** — paste ingestion + semantic search, end-to-end.
 
 ## Stack
 
@@ -205,7 +204,7 @@ Exposed by `packages/mcp-server` over stdio:
 
 The server advertises `instructions` (see `packages/mcp-server/src/instructions.ts`) during the MCP `initialize` handshake. The host injects that block before the first user turn, so the "resolve the project, then read the canon" contract reaches every new conversation on every machine without committing anything to a project repo. Per-project content belongs in the canon itself, never in this block.
 
-The active project resolves in this order: an explicit `set_active_project` call > `WORKBRAIN_PROJECT_SLUG` > a binding previously saved for the current working directory (longest matching prefix, so subdirectories inherit). Bindings live in `~/.workbrain/state.json`, overridable with `WORKBRAIN_STATE_FILE`. There is deliberately no "last project used" fallback: clients are siloed, and resolving to whatever was touched last would surface one client's context inside another client's repo.
+The active project resolves in this order: an explicit `set_active_project` call > `WORKBRAIN_PROJECT_SLUG` > a binding previously saved for the current working directory (longest matching prefix, so subdirectories inherit). Bindings live in `~/.workbrain/state.json`, overridable with `WORKBRAIN_STATE_FILE`. There is deliberately no "last project used" fallback: tenants are siloed, and resolving to whatever was touched last would surface one tenant's context inside another tenant's repo.
 
 ## Cross-project isolation
 
@@ -266,7 +265,7 @@ Phase 1 ships against Vercel + Neon. Steps are manual on purpose; we don't ship 
 
 ## Spec deltas vs design doc
 
-Decisions revised against [`docs/04-workbrain-design-final.md`](docs/04-workbrain-design-final.md) Section 2, with explicit user approval before changing them:
+Decisions revised against the Phase 1 design spec, with explicit approval before changing them:
 
 - **Neon plan:** "Pro (USD 19/month)" → **Launch (~USD 15/month)**. Neon retired the Pro tier; Launch provides 7-day point-in-time recovery, satisfying the brief's non-negotiable PITR requirement.
 - **Node version:** "20 LTS" → **22 LTS**. Vercel default is now 22, LTS support extends 12 months further, no stack dependency requires 20.
@@ -274,7 +273,7 @@ Decisions revised against [`docs/04-workbrain-design-final.md`](docs/04-workbrai
 
 ## Phase 1 Definition of Done
 
-The checklist from `docs/04-workbrain-design-final.md` Section 15:
+The Phase 1 checklist:
 
 1. ✅ Paste ingestion via the `ingest_paste` MCP tool from inside Cursor / VS Code.
 2. ✅ Semantic search returns chunks scoped to the active project.
@@ -286,4 +285,4 @@ The checklist from `docs/04-workbrain-design-final.md` Section 15:
 
 ## What's next
 
-Phase 1 ships the functional skeleton. Phase 2+ adds: auto-classification of pasted content, Voyage `rerank-2` in search, the `compose_context` flagship operation, the management webapp, live connectors (Jira, Confluence, Teams, Outlook), multi-tenant signup with Clerk, and BYOK billing. See [`docs/02-workbrain-implementation-brief.md`](docs/02-workbrain-implementation-brief.md).
+Phase 1 ships the functional skeleton. Phase 2+ adds: auto-classification of pasted content, Voyage `rerank-2` in search, the `compose_context` flagship operation, the management webapp, live connectors (Jira, Confluence, Teams, Outlook), multi-tenant signup with Clerk, and BYOK billing.
