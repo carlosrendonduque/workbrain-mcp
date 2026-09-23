@@ -4,6 +4,104 @@ Multi-tenant project memory layer for Cursor and Claude Code, consumed via MCP.
 
 > **Phase 1** — paste ingestion + semantic search, end-to-end.
 
+## How it works
+
+An agent never talks to the database. It calls MCP tools; the API decides
+which database answers, and the project filter is not optional anywhere.
+
+```mermaid
+flowchart LR
+  subgraph ide["Your editor"]
+    agent["Claude Code<br/>Cursor"]
+  end
+
+  subgraph transport["MCP"]
+    stdio["Local stdio server<br/>packages/mcp-server"]
+    http["Hosted endpoint<br/>/api/mcp"]
+  end
+
+  subgraph vercel["Next.js on Vercel"]
+    api["API<br/>Bearer wbk_*"]
+    tenancy["Tenancy resolver<br/>which database answers"]
+  end
+
+  subgraph neon["Postgres on Neon"]
+    central[("Central registry<br/>users · api_keys<br/>clients · projects<br/>canon_domains")]
+    corpus[("Tenant corpus<br/>documents · chunks<br/>links · stakeholders<br/>invocations")]
+  end
+
+  subgraph models["Models"]
+    claude["Claude<br/>classify · draft"]
+    voyage["Voyage<br/>embed · rerank"]
+  end
+
+  agent <--> stdio
+  agent <--> http
+  stdio --> api
+  http --> api
+  api --> tenancy
+  tenancy -->|"look up the project"| central
+  tenancy -->|"scoped to that project only"| corpus
+  api --> claude
+  api --> voyage
+```
+
+**Two things this drawing is making a point about.** The registry and the
+corpus are separate databases, so a tenant can be moved into one of its own
+without changing a query. And every corpus read goes through the resolver,
+because that is the one place where forgetting the project filter is caught.
+
+### What happens when you paste something
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant You
+  participant Agent as Agent via MCP
+  participant API
+  participant Claude
+  participant Voyage
+  participant DB as Tenant corpus
+
+  You->>Agent: "save this in project-x"
+  Agent->>API: ingest_paste
+  API->>API: scan for secrets
+  API->>Claude: classify · title · frontmatter
+  Claude-->>API: type, tags, related ids
+  API->>API: chunk
+  API->>Voyage: embed the chunks
+  Voyage-->>API: vectors
+  API->>DB: store document + chunks
+  API->>DB: link to documents it references
+  API-->>Agent: documentId, chunkCount
+```
+
+### What happens when the agent needs context
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Agent as Agent via MCP
+  participant API
+  participant DB as Tenant corpus
+  participant Voyage
+
+  Note over Agent: at the top of a conversation
+  Agent->>API: get_canon
+  API->>DB: conventions, rules, architecture
+  DB-->>API: rows
+  API-->>Agent: canon only — no RAG, no model
+
+  Note over Agent: when a ticket is named
+  Agent->>API: compose_context(externalId)
+  API->>DB: the focus document
+  API->>Voyage: embed the query
+  API->>DB: vector + keyword search, project-filtered
+  API->>Voyage: rerank the candidates
+  Voyage-->>API: ordered chunks
+  API-->>Agent: canon + focus + related, within a token budget
+```
+
 ## Stack
 
 - **Runtime:** Node 22 LTS, pnpm 10
