@@ -2,7 +2,7 @@
   "name": "workbrain",
   "version": "0.1.0",
   "private": true,
-  "description": "Multi-client project memory layer for Cursor and Claude Code, consumed via MCP.",
+  "description": "Multi-tenant project memory layer for Cursor and Claude Code, consumed via MCP.",
   "type": "module",
   "engines": {
     "node": ">=22 <23",

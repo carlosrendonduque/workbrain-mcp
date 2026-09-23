@@ -309,7 +309,7 @@ function ConnectInstructions() {
         <code className="font-mono text-zinc-300">https://www.workbrain.app/api/mcp</code>. To
         connect any IDE that speaks MCP (Claude Code, Cursor, Claude Desktop, etc.), point it
         at that URL with one of your API keys. Below is the command for Claude Code; the
-        pattern is similar for other clients.
+        pattern is similar for other MCP clients.
       </p>
       <pre className="mt-3 overflow-x-auto rounded bg-zinc-950 px-3 py-2 font-mono text-[11px] text-zinc-200">
 {`claude mcp add workbrain --transport http \\
