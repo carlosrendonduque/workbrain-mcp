@@ -43,3 +43,6 @@ coverage/
 
 # Vercel
 .vercel
+
+# Design and planning docs; see CONTRIBUTING.md.
+docs/
